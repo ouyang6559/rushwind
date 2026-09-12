@@ -22,8 +22,8 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 
 | Phase | Scope |
 |:---|:---|
-| P0 | core lifecycle, transport contracts, conformance suite ← current |
-| P1 | `rushwind-transport-axum` (admin/API), `rushwind-transport-ws` (session middleware chain) |
+| P0 | core lifecycle, transport contracts, conformance suite |
+| P1 | `rushwind-transport-axum` (admin/API — delivered); `rushwind-transport-ws` (session middleware chain) ← current |
 | P2 | `rushwind-transport-quic` (QUIC/http3/webtransport), `rushwind-transport-mqtt` (external-broker consumer bridge), registration-only registry slice |
 | P3 | `rushwind-bootstrap` (serde-based config-driven assembly) |
 
@@ -33,8 +33,10 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 |:---|:---|
 | `crates/rushwind-core` | lifecycle orchestration: concurrent start, cascading shutdown, bounded phases, outcome observation |
 | `crates/rushwind-transport` | contracts: `Server` trait, `StopSignal`, `Instance`, `ServerError` |
+| `crates/rushwind-transport-axum` | axum adapter: serves a `Router` under the lifecycle; shutdown mapping in the architecture doc |
 | `crates/rushwind-testkit` | cross-adapter conformance suite — every transport must pass it in full |
 | `examples/multi-server` | two-server lifecycle demo (cascade, phase ordering) |
+| `examples/axum-admin` | axum adapter demo: health route + signal-driven graceful shutdown |
 
 ## For adapter authors
 
