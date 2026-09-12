@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/logo/rushwind-icon.svg" alt="RushWind" width="128">
+
 # RushWind
 
 [English](./README_en.md) | [中文](./README.md) | **日本語**

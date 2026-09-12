@@ -1,9 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/rushwind-lockup-light.svg">
-  <img src="assets/logo/rushwind-lockup-dark.svg" alt="RushWind · 锐风" width="520">
-</picture>
+<img src="assets/logo/rushwind-icon.svg" alt="RushWind · 锐风" width="128">
 
 # RushWind · 锐风
 
