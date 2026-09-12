@@ -8,10 +8,11 @@
 |:---|:---|:---|
 | `rushwind-transport` | `tokio-util`（仅 `CancellationToken` 包装） | 契约：`Server` trait、`StopSignal`、`Instance`、`ServerError`。**唯一允许"只有接口"的 crate** |
 | `rushwind-core` | `tokio`（signal/time/sync）、`futures`（`FuturesUnordered`、`catch_unwind`） | 生命周期编排。不持有任何业务概念 |
-| `rushwind-testkit` | 上两者 + `tokio::time`（探针延迟） | 一致性套件。见文末清单 |
+| `rushwind-storage` | 无（刻意零依赖） | 存储契约：`Repository` trait、`Schema`/`Record`/`Value` 动态协议、三种分页、过滤器树、Viewer 租户、审计钩子 |
+| `rushwind-testkit` | 上两者 + `tokio::time`（探针延迟） | 一致性套件（传输 + 存储两套）。见文末清单 |
 | `examples/*` | 按需 | `publish = false` 的演示程序 |
 
-适配器 crate（P1 起）依赖 `rushwind-transport`（契约）与它们各自的协议栈（axum、quinn、rumqttc……），**永不依赖 `rushwind-core`**——编排是被调用的，不是被引用的。
+适配器 crate（P1 起）依赖 `rushwind-transport`（契约）与它们各自的协议栈（axum、quinn、rumqttc……），**永不依赖 `rushwind-core`**——编排是被调用的，不是被引用的。存储引擎 crate 同理：依赖 `rushwind-storage` 与各自的驱动（SeaORM/sqlx、官方 mongodb crate……），契约 crate 本身零依赖，任何引擎都能采用而不锁定用户。
 
 ## 分发模型：对象安全 trait + 借用生命周期装箱
 
@@ -65,6 +66,8 @@
 1. **资源释放必须穷尽栈的原生机制**。axum 的优雅停机就是 hyper 的原生能力；适配器自排空、自管理连接池都是重复造轮子，且排空语义不可能比栈更正确。
 2. **`stop()` 为空不代表停机可选**。axum 之所以空，是因为它的栈把全部停机语义内置到了 serve 的返回路径里。没有原生排空机制的栈（会话型传输普遍如此）必须在 `stop()` 里实现真实释放，编排层的截止是兜底而非替代。
 
+两条规则各有一个现成案例：规则 1 是 axum 适配器（hyper 的 `with_graceful_shutdown` 全程承载，`stop()` 为空）；规则 2 是 quic 适配器——quinn 的端点是长驻对象、不接受循环的存续而存续，`stop()` 因此做**真实释放**（`Endpoint::close`，连带关闭其拥有的全部连接），这是本仓库里 `stop()` 非空的唯一现行示例。
+
 会话型传输（WS，及 P2 的 QUIC/MQTT 桥）不经过本节的生命周期映射表——它们的门链、准入策略与会话停机总线是独立的一层契约，见 [session-middleware.md](./session-middleware.md)。
 
 ## 取消模型
@@ -82,6 +85,26 @@
 `futures::FutureExt::catch_unwind` 包裹每个生命周期 future。panic 在服务器边界被捕获、字符串化为 `Panicked` 记录、兄弟服务器的清理照常执行——这是套件中两个用例（panic 隔离、级联不因 panic 中断）验证的语义。
 
 边界：`panic = abort` 的发布构建中 `catch_unwind` 无效，进程直接终止。RushWind 不对此做假设；文档化的立场是：**运行 RushWind 的进程应使用 unwind panic 策略，或接受 panic 即进程死亡的语义**。
+
+## 存储契约：动态协议替代运行时反射
+
+`rushwind-storage` 是 go-crud「一套泛型 Repository 驾驭 8 种引擎」的 Rust 表达。Go 靠 proto 结构体 + 反射获得动态性；Rust 没有运行时反射，动态性被显式化为一个小协议面：
+
+| Go（go-crud） | Rust（rushwind-storage） | 理由 |
+|:---|:---|:---|
+| proto 反射读写字段 | `Schema`（表/列/类型）+ `Record`（BTreeMap 行） | 引擎从 Schema 派生自身机制；字段遍历确定性（测试与审计可复现） |
+| `context.Context` 携带 viewer | `QueryCtx` 按值传递（`Viewer` + `Arc<dyn Auditor>`） | clone 便宜（Arc）；单引用 + owned ctx 让装箱 future 的生命周期与传输契约同样简单 |
+| `FilterExpr`（一层 AND/OR） | `FilterExpr` 递归树（`All`/`Any` 任意嵌套） | 内存引擎逐条求值即规范语义，SQL 引擎翻译为 `sea_query::Condition`，套件钉死两者一致 |
+| 三种分页 proto | `Paging::{Page, Offset, Token}` | Token 游标 = 主键升序流（URL-safe base64 编码的末位 id）；与自定义排序组合是 `InvalidQuery` 而非静默忽略 |
+| GORM 软删除 / Ent 钩子 | 刻意不入 P0 契约 | 软删除是引擎侧约定（`deleted_at` + 默认过滤），硬进契约会绑架无此概念的引擎 |
+
+三条硬性义务（套件强制）：
+
+1. **Viewer 作用域是权限边界**：所有路径（get/list/count/update/upsert/delete）必须施加作用域；越界的行与不存在的行**不可区分**（`get` 返回 `Ok(None)`，写返回 `NotFound`）。
+2. **create 回填主键**，所有写操作返回完整存储行。
+3. **过滤器翻译必须忠实**（含嵌套组），或以 `InvalidQuery` 拒绝——校验先于引擎触达。
+
+引擎适配器只有两个：`rushwind-storage-memory`（语义基准 + 零驱动即时可用）与 `rushwind-storage-seaorm`（sea_orm 连接池/事务 + sea_query 动态拼句，SQLite 过套件；无需生成实体，Schema 即唯一事实来源）。内存引擎的存在不是多余的第二个样例——它让「同一过滤器树、两种引擎、逐行一致」成为套件可执行的断言，而非文档承诺。
 
 ## 与 go-wind 的语义差异
 
@@ -110,3 +133,18 @@
 | `cooperative_shutdown_completes` | 适配器：真实服务器在信号下干净退出 |
 
 套件自检：`crates/rushwind-testkit/tests/conformance_self.rs` 以内置探针跑通全部用例，验证套件本身有效。
+
+`rushwind_storage_conformance_suite!` 生成的全部用例（CI 对每个存储引擎强制，`--features storage`）：
+
+| 用例组 | 验证 |
+|:---|:---|
+| CRUD 七件（create 回填主键/全列往返/get 缺失 None/update 只补丁给定字段且越权即 NotFound/delete 双向语义/批写原子性冲突回滚/upsert 插改一体） | 契约的写路径义务与 NULL 往返 |
+| 比较符/模式符/NULL/集合区间/实数数值比较 | 18 个操作符语义；模式符为 SQL 通配（`%`/`_`），`ilike` 折叠大小写 |
+| `and_or_groups_nest` | `All`/`Any` 任意嵌套翻译与求值一致 |
+| `invalid_filters_are_rejected_before_the_engine` | 未知列、操作符元数以 `InvalidQuery` 拒绝 |
+| `sorting_asc_desc_and_secondary` | 多级排序，主键兜底决胜 |
+| `paging_page_mode` / `paging_offset_mode` / `paging_token_stream_covers_everything_once` | 三种分页；游标流全覆盖、不重不漏、pk 升序 |
+| `paging_and_sorting_violations_are_rejected` | page 0、Token+自定义排序、垃圾游标 → `InvalidQuery` |
+| `field_mask_projects_returned_rows` | 掩码行只含掩码列，无掩码行全列 |
+| `viewer_*` 四件 | ALL/NONE 边界、OWN 隔离（读不到、写不动、原行无损）、UNIT/USER 范围 |
+| `audit_entries_flow_to_the_sink` | create/update/delete 产生 `AuditEntry`（读审计是引擎策略，不钉死） |

@@ -1,0 +1,21 @@
+[package]
+name = "quic-gateway"
+description = "Gated QUIC gateway demo: loopback-only gate, session cap, handshake deadline, lifecycle-aligned teardown."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-core = { workspace = true }
+rushwind-transport = { workspace = true }
+rushwind-transport-quic = { workspace = true }
+quinn = { version = "0.11", default-features = false, features = ["rustls-ring", "runtime-tokio"] }
+rcgen = "0.14"
+rustls-pki-types = "1"
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

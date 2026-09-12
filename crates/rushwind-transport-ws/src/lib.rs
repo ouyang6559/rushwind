@@ -37,7 +37,6 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
@@ -45,7 +44,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, MethodRouter};
 use rushwind_transport::{
-    GateChain, Handshake, HandshakeGate, Rejection, ServerError, SessionPolicy, StopSignal,
+    GateChain, Handshake, HandshakeGate, Rejection, ServerError, SessionCounter, SessionPolicy,
+    StopSignal,
 };
 
 /// Session-handler function type: receives the live native socket.
@@ -55,59 +55,22 @@ type SessionHandlerFn = Box<dyn Fn(WebSocket) -> SessionFuture + Send + Sync>;
 type SessionFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Shared per-route state: the gate chain, admission policy, session
-/// handler, live-session counter, and session-shutdown bus.
+/// handler, admission counter, and session-shutdown bus.
 struct RouteState {
     gates: GateChain,
     policy: SessionPolicy,
     session: SessionHandlerFn,
-    live: Arc<AtomicUsize>,
+    counter: SessionCounter,
     bus: StopSignal,
-}
-
-/// A drop guard for the live-session counter. The counted variant
-/// decrements on drop; the unbounded variant is inert, so an uncapped
-/// route never decrements a counter it never incremented.
-enum SessionGuard {
-    /// The route has no session cap; no counter bookkeeping.
-    Unbounded,
-    /// The route counts live sessions; the guard owns the shared counter
-    /// handle and decrements it when dropped.
-    Counted(Arc<AtomicUsize>),
-}
-
-impl Drop for SessionGuard {
-    fn drop(&mut self) {
-        if let SessionGuard::Counted(live) = self {
-            live.fetch_sub(1, Ordering::Relaxed);
-        }
-    }
 }
 
 impl RouteState {
     /// Whether the route is currently at its configured session cap.
     /// Advisory only — the authoritative check happens atomically inside
-    /// [`RouteState::admit_session`].
+    /// [`SessionCounter::admit`].
     fn at_capacity(&self) -> bool {
-        self.policy
-            .get_max_concurrent_sessions()
-            .is_some_and(|cap| self.live.load(Ordering::Relaxed) >= cap)
-    }
-
-    /// Attempts to register a live session, returning a guard that
-    /// decrements the counter on drop, or `None` when the cap is reached.
-    fn admit_session(&self) -> Option<SessionGuard> {
-        match self.policy.get_max_concurrent_sessions() {
-            None => Some(SessionGuard::Unbounded),
-            Some(cap) => {
-                let prev = self.live.fetch_add(1, Ordering::Relaxed);
-                if prev >= cap {
-                    self.live.fetch_sub(1, Ordering::Relaxed);
-                    None
-                } else {
-                    Some(SessionGuard::Counted(Arc::clone(&self.live)))
-                }
-            }
-        }
+        self.counter
+            .at_cap(self.policy.get_max_concurrent_sessions())
     }
 }
 
@@ -183,7 +146,7 @@ impl WsRoute {
             gates: self.gates,
             policy: self.policy,
             session,
-            live: Arc::new(AtomicUsize::new(0)),
+            counter: SessionCounter::new(),
             bus: bus.clone(),
         });
         let handler_state = Arc::clone(&state);
@@ -211,7 +174,10 @@ impl WsRoute {
                 .on_upgrade(move |socket| {
                     let state = callback_state;
                     async move {
-                        let _guard = match state.admit_session() {
+                        let _guard = match state
+                            .counter
+                            .admit(state.policy.get_max_concurrent_sessions())
+                        {
                             Some(g) => g,
                             None => return,
                         };

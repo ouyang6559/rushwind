@@ -41,13 +41,13 @@ before/after 钩子是应用注册的任意代码，运行在停机预算内。�
 
 **威胁**：会话型传输的握手期资源耗尽——连接建立与密钥协商发生在认证之前，攻击者可无凭证地消耗握手并发、内存与 CPU（QUIC/KCP 的放大攻击面）。
 
-**已交付（P1，axum-ws 路径）**：
-- 门链（`GateChain`）：无凭证握手在升级前被拒，见 [session-middleware.md](./session-middleware.md)
-- 每路由同时活跃会话上限（预检 + 原子准入双检，竞态通过者立即关闭）
+**已交付**：
+- 门链（`GateChain`）：无凭证握手被拒——axum-ws 路径在升级前拒绝（403 响应），quic 路径在握手尝试时刻以协议拒绝原语拒绝，见 [session-middleware.md](./session-middleware.md)
+- 同时活跃会话上限：axum-ws 为预检 + 原子准入双检、竞态通过者立即关闭；quic 为连接建立时刻的原子准入、超限连接显式关闭
+- 握手超时（quic 路径）：`Connecting` future 与截止竞速，超时即丢弃、握手中断；`handshake_deadline_keeps_accept_loop_responsive` 用例固定"被弃置的握手不能钉死接受循环"
 
-**残余（P2，随裸传输交付）**：
-- 握手超时（接受循环为未完成握手挂起截止）
-- 认证前每连接字节预算
-- 每远端配额（依赖 HTTP 族的 ConnectInfo 管道）
+**残余**：
+- 认证前每连接字节预算（QUIC 层认证前的飞行字节计量，及 tcp 的先认证字节流）
+- 每远端配额（HTTP 族依赖 ConnectInfo 管道；quic 对端地址已可见，计量结构待设计）
 
-残余项在 axum-ws 路径上不可执行（hyper 的升级即时完成、无先认证帧），故未预定义在 `SessionPolicy` 中——契约只收编当下可执行的字段。
+axum-ws 路径上握手超时不可执行（hyper 的升级即时完成，无可观察的握手窗口）；残余项等其执行点落地时随语义进 `SessionPolicy`——契约不收编死字段。

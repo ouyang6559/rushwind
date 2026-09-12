@@ -14,7 +14,9 @@
 //! repository root.
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// A transport-neutral snapshot of one session handshake, as visible to
 /// gate middleware **before** any session state is allocated.
@@ -111,10 +113,13 @@ impl GateChain {
 ///
 /// This is the pre-auth budget of the threat model: quotas that bound
 /// resource consumption **before and during** the handshake, deliberately
-/// separate from any post-auth application-level limiting.
+/// separate from any post-auth application-level limiting. Fields exist
+/// only for the controls a concrete transport can actually enforce; see
+/// `docs/session-middleware.md` for the per-transport enforcement matrix.
 #[derive(Default)]
 pub struct SessionPolicy {
     max_concurrent_sessions: Option<usize>,
+    handshake_timeout: Option<Duration>,
 }
 
 impl SessionPolicy {
@@ -134,6 +139,85 @@ impl SessionPolicy {
     /// The configured simultaneous-session cap, if any.
     pub fn get_max_concurrent_sessions(&self) -> Option<usize> {
         self.max_concurrent_sessions
+    }
+
+    /// Bounds the wall-clock budget a single handshake may consume.
+    /// Transports with an observable handshake phase enforce this by
+    /// racing the handshake future against the deadline and dropping it
+    /// on expiry.
+    pub fn handshake_timeout(mut self, d: Duration) -> Self {
+        self.handshake_timeout = Some(d);
+        self
+    }
+
+    /// The configured handshake deadline, if any.
+    pub fn get_handshake_timeout(&self) -> Option<Duration> {
+        self.handshake_timeout
+    }
+}
+
+/// The shared counter behind every session cap, owned by one listener.
+///
+/// Admission is a single atomic step: the counter increments and the cap
+/// is checked together, so racing handshakes cannot both claim the last
+/// slot. Guards decrement on drop — including drop by task abort — so a
+/// cap can never leak slots.
+pub struct SessionCounter {
+    live: Arc<AtomicUsize>,
+}
+
+impl Default for SessionCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SessionCounter {
+    /// Creates a counter at zero.
+    pub fn new() -> Self {
+        Self {
+            live: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Advisory cap check without admission. Transport pre-checks use
+    /// this where a cheap early refusal is possible; the authoritative
+    /// check is [`SessionCounter::admit`].
+    pub fn at_cap(&self, cap: Option<usize>) -> bool {
+        cap.is_some_and(|cap| self.live.load(Ordering::Relaxed) >= cap)
+    }
+
+    /// Attempts admission under `cap`, returning a guard that decrements
+    /// on drop, or `None` when the cap is reached. `None` for `cap` means
+    /// uncapped: admission always succeeds and the guard is inert — an
+    /// uncapped route never decrements a counter it never incremented.
+    pub fn admit(&self, cap: Option<usize>) -> Option<SessionCounterGuard> {
+        let live = match cap {
+            None => None,
+            Some(cap) => {
+                let prev = self.live.fetch_add(1, Ordering::Relaxed);
+                if prev >= cap {
+                    self.live.fetch_sub(1, Ordering::Relaxed);
+                    return None;
+                }
+                Some(Arc::clone(&self.live))
+            }
+        };
+        Some(SessionCounterGuard { live })
+    }
+}
+
+/// The admission guard returned by [`SessionCounter::admit`]. The counted
+/// variant decrements the counter on drop; the uncapped variant is inert.
+pub struct SessionCounterGuard {
+    live: Option<Arc<AtomicUsize>>,
+}
+
+impl Drop for SessionCounterGuard {
+    fn drop(&mut self) {
+        if let Some(live) = &self.live {
+            live.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 }
 
@@ -208,5 +292,36 @@ mod tests {
             .gate(recorder("c", GateVerdict::Continue, &log));
         assert!(chain.evaluate(&Handshake::default()).is_ok());
         assert_eq!(*log.lock().expect("log poisoned"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn counter_admits_to_cap_then_refuses() {
+        let counter = SessionCounter::new();
+        // Held for the whole test: while the guard lives, the cap holds.
+        let _held = counter
+            .admit(Some(1))
+            .expect("first admission must succeed");
+        assert!(counter.admit(Some(1)).is_none());
+        assert!(counter.at_cap(Some(1)));
+    }
+
+    #[test]
+    fn counter_guard_drop_frees_slot() {
+        let counter = SessionCounter::new();
+        {
+            let _guard = counter.admit(Some(1));
+            assert!(_guard.is_some());
+        }
+        assert!(!counter.at_cap(Some(1)));
+        assert!(counter.admit(Some(1)).is_some());
+    }
+
+    #[test]
+    fn counter_uncapped_never_counts() {
+        let counter = SessionCounter::new();
+        for _ in 0..8 {
+            assert!(counter.admit(None).is_some());
+        }
+        assert!(!counter.at_cap(None));
     }
 }

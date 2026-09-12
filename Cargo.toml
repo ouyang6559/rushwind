@@ -18,6 +18,18 @@ rushwind-core = { path = "crates/rushwind-core", version = "0.0.1" }
 rushwind-testkit = { path = "crates/rushwind-testkit", version = "0.0.1" }
 rushwind-transport-axum = { path = "crates/rushwind-transport-axum", version = "0.0.1" }
 rushwind-transport-ws = { path = "crates/rushwind-transport-ws", version = "0.0.1" }
+rushwind-transport-quic = { path = "crates/rushwind-transport-quic", version = "0.0.1" }
+rushwind-storage = { path = "crates/rushwind-storage", version = "0.0.1" }
+rushwind-storage-memory = { path = "crates/rushwind-storage-memory", version = "0.0.1" }
+rushwind-storage-seaorm = { path = "crates/rushwind-storage-seaorm", version = "0.0.1" }
+
+# SeaORM backs the storage adapter: dynamic statement building (sea_query),
+# connection pooling and transactions. The contract crate stays dependency-free.
+sea-orm = { version = "2.0", default-features = false, features = [
+    "runtime-tokio",
+    "sqlx-sqlite",
+    "macros",
+] }
 
 # Workspace-wide lint policy: RushWind crates contain no unsafe code, period.
 [workspace.lints.rust]

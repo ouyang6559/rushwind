@@ -23,5 +23,7 @@ pub mod signal;
 pub use error::ServerError;
 pub use instance::Instance;
 pub use server::{Server, ServerFuture};
-pub use session::{GateChain, GateVerdict, Handshake, HandshakeGate, Rejection, SessionPolicy};
+pub use session::{
+    GateChain, GateVerdict, Handshake, HandshakeGate, Rejection, SessionCounter, SessionPolicy,
+};
 pub use signal::StopSignal;
