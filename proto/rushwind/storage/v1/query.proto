@@ -1,0 +1,136 @@
+// RushWind storage query contract — the wire face of `rushwind-storage`.
+//
+// Authored to mirror the Go predecessor go-crud's `api/` contract: the same
+// operator taxonomy (which itself descends from Django ORM field lookups),
+// the same FilterExpr group shape, the same pagination oneof. This file is
+// the single source of truth for the wire format; the Rust types in
+// `rushwind-storage-proto` are generated from it (prost + pbjson for the
+// protojson JSON mapping), never hand-written.
+
+syntax = "proto3";
+
+package rushwind.storage.v1;
+
+// google.protobuf.Value (struct.proto) types arbitrary JSON scalars in
+// FilterCondition; protox compiles the well-known types itself.
+import "google/protobuf/struct.proto";
+
+// The requested projection — go-crud's own FieldMask message (paths list),
+// not google.protobuf.FieldMask, so the protojson form is
+// `{"paths": ["id", "name"]}`.
+message FieldMask {
+  repeated string paths = 1;
+}
+
+// The lookup taxonomy: 29 operators, Django ORM lineage. The Rust semantic
+// core implements the relational subset; the exotic tail (regexp, JSON,
+// array operators) is rejected with `Unsupported` at the wire boundary —
+// see the mapping table in docs/architecture.md.
+enum Operator {
+  OPERATOR_UNSPECIFIED = 0;
+  EQ = 1;
+  NEQ = 2;
+  GT = 3;
+  GTE = 4;
+  LT = 5;
+  LTE = 6;
+  LIKE = 7;
+  ILIKE = 8;
+  NOT_LIKE = 9;
+  IN = 10;
+  NIN = 11;
+  IS_NULL = 12;
+  IS_NOT_NULL = 13;
+  BETWEEN = 14;
+  REGEXP = 15;
+  IREGEXP = 16;
+  CONTAINS = 17;
+  STARTS_WITH = 18;
+  ENDS_WITH = 19;
+  ICONTAINS = 20;
+  ISTARTS_WITH = 21;
+  IENDS_WITH = 22;
+  JSON_CONTAINS = 23;
+  ARRAY_CONTAINS = 24;
+  EXISTS = 25;
+  SEARCH = 26;
+  EXACT = 27;
+  IEXACT = 28;
+}
+
+// How a filter group combines its children.
+enum ExprType {
+  EXPR_TYPE_UNSPECIFIED = 0;
+  AND = 1;
+  OR = 2;
+}
+
+enum SortDirection {
+  SORT_DIRECTION_UNSPECIFIED = 0;
+  ASC = 1;
+  DESC = 2;
+}
+
+// One leaf test: `field op value`.
+message FilterCondition {
+  string field = 1;
+  Operator op = 2;
+  // Arbitrary JSON scalar in protojson encoding; native JSON numbers and
+  // strings are both accepted where the engine's column kinds allow.
+  google.protobuf.Value value = 3;
+  repeated google.protobuf.Value values = 4;  // go-crud extensions with no relational equivalent; rejected by the Rust
+  // core with `Unsupported`.
+  string date_part = 5;
+  string json_path = 6;
+}
+
+// A filter tree: one group level with leaf conditions and nested groups.
+message FilterExpr {
+  ExprType type = 1;
+  repeated FilterCondition conditions = 2;
+  repeated FilterExpr groups = 3;
+}
+
+// One ordering term.
+message Sorting {
+  string field = 1;
+  SortDirection direction = 2;
+}
+
+// The three paging strategies and the no-paging escape hatch, mirroring
+// go-crud's PaginationRequest.
+message PageBasedPagination {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message OffsetBasedPagination {
+  int64 offset = 1;
+  int32 limit = 2;
+}
+
+message TokenBasedPagination {
+  string token = 1;
+  int32 page_size = 2;
+}
+
+message NoPaging {}
+
+message PaginationRequest {
+  oneof pagination_type {
+    PageBasedPagination page_based = 1;
+    OffsetBasedPagination offset_based = 2;
+    TokenBasedPagination token_based = 3;
+    NoPaging no_paging = 4;
+  }
+}
+
+// The whole list-request envelope: paging, filter, ordering, projection.
+message PagingRequest {
+  PaginationRequest pagination_type = 1;
+  oneof filter {
+    FilterExpr filter_expr = 10;
+  }
+  repeated Sorting sorting = 20;
+  FieldMask field_mask = 30;
+}

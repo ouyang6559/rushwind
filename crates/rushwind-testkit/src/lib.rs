@@ -55,6 +55,10 @@
 
 mod conformance;
 pub mod probe;
+#[cfg(feature = "storage")]
+pub mod storage_conformance;
 
 pub use rushwind_core;
+#[cfg(feature = "storage")]
+pub use rushwind_storage;
 pub use rushwind_transport;

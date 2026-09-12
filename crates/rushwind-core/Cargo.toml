@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 rushwind-transport = { workspace = true }
-tokio = { workspace = true, features = ["signal", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "signal", "sync", "time"] }
 futures = { workspace = true }
 
 [dev-dependencies]

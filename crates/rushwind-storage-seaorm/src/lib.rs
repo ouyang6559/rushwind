@@ -1,0 +1,1037 @@
+//! The SeaORM-backed engine for the [`Repository`] contract.
+//!
+//! go-crud's `gorm/` module drives GORM through its dynamic query builder;
+//! this crate is the same idea on the Rust side: [`sea_orm::DatabaseConnection`]
+//! for pooling, drivers and transactions, [`sea_orm::sea_query`] for dynamic
+//! statement construction. Nothing here needs generated entities — the
+//! [`Schema`] is the single source of truth, exactly like the contract wants.
+//!
+//! Filter trees translate to `sea_query::Condition`s (nested `All`/`Any`
+//! groups become nested `AND`/`OR`); the three paging strategies translate
+//! to `LIMIT/OFFSET` or an id-greater-than cursor; viewer scopes conjoin an
+//! extra predicate or short-circuit to empty. Batch writes run inside a
+//! real transaction. SQLite is the conformance-tested backend, but the
+//! statement building is backend-agnostic (MySQL/PostgreSQL builders ship
+//! in the same dependency).
+
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+
+use sea_orm::sea_query::{
+    Alias, ColumnDef, Condition, DeleteStatement, Expr, ExprTrait, Func, InsertStatement,
+    MysqlQueryBuilder, OnConflict, Order, PostgresQueryBuilder, Query, SelectStatement,
+    SqliteQueryBuilder, Table, TableCreateStatement, UpdateStatement, Values,
+};
+use sea_orm::{
+    ConnectOptions, ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, Statement,
+    TransactionTrait,
+};
+
+use rushwind_storage::{
+    AuditAction, AuditEntry, ColumnKind, FieldMask, FilterExpr, FilterNode, ListQuery, Op, Page,
+    Paging, QueryCtx, Record, RepoFuture, Repository, Schema, Scope, SortDir, StorageError, Value,
+    Viewer,
+};
+
+/// A [`Repository`] backed by a SeaORM connection pool.
+pub struct SeaRepo {
+    schema: Schema,
+    db: DatabaseConnection,
+}
+
+/// Renders a query statement for a concrete backend.
+trait Buildable {
+    /// The SQL text and bind values for `backend`.
+    fn build_for(&self, backend: DbBackend) -> (String, Values);
+}
+
+macro_rules! buildable {
+    ($($ty:ty),+ $(,)?) => {
+        $(impl Buildable for $ty {
+            fn build_for(&self, backend: DbBackend) -> (String, Values) {
+                match backend {
+                    DbBackend::MySql => self.build(MysqlQueryBuilder),
+                    DbBackend::Postgres => self.build(PostgresQueryBuilder),
+                    _ => self.build(SqliteQueryBuilder),
+                }
+            }
+        })+
+    };
+}
+
+buildable!(
+    SelectStatement,
+    InsertStatement,
+    UpdateStatement,
+    DeleteStatement
+);
+
+// DDL statements build to plain SQL, without bind values.
+impl Buildable for TableCreateStatement {
+    fn build_for(&self, backend: DbBackend) -> (String, Values) {
+        let sql = match backend {
+            DbBackend::MySql => self.build(MysqlQueryBuilder),
+            DbBackend::Postgres => self.build(PostgresQueryBuilder),
+            _ => self.build(SqliteQueryBuilder),
+        };
+        (sql, Values(Vec::new()))
+    }
+}
+
+impl SeaRepo {
+    /// Binds a repository to a live connection and a schema.
+    pub fn new(db: DatabaseConnection, schema: Schema) -> Self {
+        Self { schema, db }
+    }
+
+    /// Opens a SQLite in-memory database suited for this engine — a
+    /// single-connection pool so `:memory:` is one database, not one per
+    /// pooled connection.
+    pub async fn sqlite_memory(schema: Schema) -> Result<Self, StorageError> {
+        let mut options = ConnectOptions::new("sqlite::memory:");
+        options.max_connections(1);
+        let db = Database::connect(options)
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        Ok(Self::new(db, schema))
+    }
+
+    /// Creates the table if it does not exist yet — the DDL counterpart of
+    /// the [`Schema`], for embedded and test setups. Production deployments
+    /// usually own their migrations instead.
+    pub async fn migrate_create(&self) -> Result<(), StorageError> {
+        let create = create_table_statement(&self.schema);
+        self.db
+            .execute_raw(self.statement(&create))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        Ok(())
+    }
+
+    // ---- shared plumbing ---------------------------------------------------
+
+    fn backend(&self) -> DbBackend {
+        self.db.get_database_backend()
+    }
+
+    fn statement<S: Buildable>(&self, stmt: &S) -> Statement {
+        let (sql, values) = stmt.build_for(self.backend());
+        Statement::from_sql_and_values(self.backend(), sql, values.0)
+    }
+
+    fn map_err(&self, err: DbErr) -> StorageError {
+        let text = err.to_string();
+        if text.contains("UNIQUE constraint")
+            || text.contains("Duplicate entry")
+            || text.contains("duplicate key")
+        {
+            StorageError::Conflict(text)
+        } else {
+            StorageError::Backend(text)
+        }
+    }
+
+    /// The viewer scope as a SQL predicate, or denial of the whole query.
+    fn scope_sql(&self, ctx: &QueryCtx) -> Result<ScopeSql, StorageError> {
+        Ok(
+            match ctx.viewer.scope(Viewer::OWNER_COLUMN, Viewer::UNIT_COLUMN) {
+                Scope::Deny => ScopeSql::Deny,
+                Scope::Unrestricted => ScopeSql::Pass(None),
+                Scope::Scoped(filter) => ScopeSql::Pass(Some(translate(filter.node())?)),
+            },
+        )
+    }
+
+    fn audit(&self, ctx: &QueryCtx, action: AuditAction, target: Option<Value>) {
+        ctx.audit(AuditEntry::now(
+            action,
+            self.schema.table.clone(),
+            target,
+            ctx.viewer.actor_id,
+        ));
+    }
+
+    fn row_to_record(
+        &self,
+        row: &sea_orm::QueryResult,
+        columns: &[String],
+    ) -> Result<Record, StorageError> {
+        let mut record = Record::new();
+        for name in columns {
+            let kind = self
+                .schema
+                .column(name)
+                .ok_or_else(|| StorageError::InvalidQuery(format!("unknown column {name:?}")))?
+                .kind;
+            let value = match kind {
+                ColumnKind::Bool => Value::from(
+                    row.try_get_by::<Option<bool>, _>(name.as_str())
+                        .map_err(|e| self.map_err(e))?,
+                ),
+                ColumnKind::Int => Value::from(
+                    row.try_get_by::<Option<i64>, _>(name.as_str())
+                        .map_err(|e| self.map_err(e))?,
+                ),
+                ColumnKind::Real => Value::from(
+                    row.try_get_by::<Option<f64>, _>(name.as_str())
+                        .map_err(|e| self.map_err(e))?,
+                ),
+                ColumnKind::Text => Value::from(
+                    row.try_get_by::<Option<String>, _>(name.as_str())
+                        .map_err(|e| self.map_err(e))?,
+                ),
+            };
+            record.insert(name.as_str(), value);
+        }
+        Ok(record)
+    }
+
+    /// The columns a list query returns: everything, or the masked fields
+    /// plus the primary key (cursors need it even when masked out).
+    fn select_columns(&self, mask: &Option<FieldMask>) -> Vec<String> {
+        match mask {
+            None => self.schema.columns.iter().map(|c| c.name.clone()).collect(),
+            Some(mask) => {
+                let pk = self.schema.primary_key.clone();
+                let mut cols: Vec<String> = mask
+                    .paths()
+                    .filter(|p| *p != pk && self.schema.column(p).is_some())
+                    .map(str::to_owned)
+                    .collect();
+                cols.push(pk);
+                cols
+            }
+        }
+    }
+
+    fn project(&self, mask: &Option<FieldMask>, row: Record) -> Record {
+        let mut projected = row;
+        if let Some(mask) = mask {
+            projected.retain(|field| mask.allows(field));
+        }
+        projected
+    }
+
+    /// The WHERE clause shared by list and count: scope conjoined with the
+    /// query filter.
+    fn where_sql(
+        &self,
+        scope: &ScopeSql,
+        query: &ListQuery,
+    ) -> Result<Option<Condition>, StorageError> {
+        let mut combined = Condition::all();
+        let mut any = false;
+        if let ScopeSql::Pass(Some(scope_cond)) = scope {
+            combined = combined.add(scope_cond.clone());
+            any = true;
+        }
+        if let Some(filter) = &query.filter {
+            combined = combined.add(translate(filter.node())?);
+            any = true;
+        }
+        Ok(if any { Some(combined) } else { None })
+    }
+
+    async fn count_matching(
+        &self,
+        table: &Alias,
+        where_clause: &Option<Condition>,
+    ) -> Result<u64, StorageError> {
+        let mut count = Query::select();
+        count.from(table.clone()).expr(Expr::cust("COUNT(*)"));
+        if let Some(cond) = where_clause {
+            count.cond_where(cond.clone());
+        }
+        let row = self
+            .db
+            .query_one_raw(self.statement(&count))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        match row {
+            Some(row) => {
+                let n = row
+                    .try_get_by_index::<i64>(0)
+                    .map_err(|e| self.map_err(e))?;
+                Ok(Ord::max(n, 0) as u64)
+            }
+            None => Ok(0),
+        }
+    }
+
+    /// Reads a row the engine itself just wrote — no scope re-check, because
+    /// the write already happened inside the caller's scope.
+    async fn fetch_by_pk_unscoped(&self, id: i64) -> Result<Record, StorageError> {
+        let pk = self.schema.primary_key.clone();
+        let cols = self.select_columns(&None);
+        let mut select = Query::select();
+        select.from(Alias::new(&self.schema.table));
+        for col in &cols {
+            select.column(Alias::new(col));
+        }
+        select.cond_where(Condition::all().add(Expr::col(Alias::new(&pk)).eq(id)));
+        select.limit(1);
+        let row = self
+            .db
+            .query_one_raw(self.statement(&select))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        row.map(|row| self.row_to_record(&row, &cols))
+            .unwrap_or_else(|| Err(StorageError::NotFound))
+    }
+
+    fn validate_row(&self, row: &Record) -> Result<(), StorageError> {
+        for (field, value) in row.iter() {
+            let column = self.schema.column(field).ok_or_else(|| {
+                StorageError::InvalidQuery(format!("unknown column {field:?} in write payload"))
+            })?;
+            if !column.kind.accepts(value.type_name()) {
+                return Err(StorageError::InvalidQuery(format!(
+                    "column {field:?} does not accept a {} value",
+                    value.type_name()
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    // ---- async implementations ----------------------------------------------
+
+    async fn get_async(&self, ctx: &QueryCtx, id: Value) -> Result<Option<Record>, StorageError> {
+        let id = expect_id(&id)?;
+        let scope = self.scope_sql(ctx)?;
+        if matches!(scope, ScopeSql::Deny) {
+            return Ok(None);
+        }
+        let pk = self.schema.primary_key.clone();
+        let cols = self.select_columns(&None);
+        let mut select = Query::select();
+        select.from(Alias::new(&self.schema.table));
+        for col in &cols {
+            select.column(Alias::new(col));
+        }
+        let mut cond = Condition::all().add(Expr::col(Alias::new(&pk)).eq(id));
+        if let ScopeSql::Pass(Some(scope_cond)) = &scope {
+            cond = cond.add(scope_cond.clone());
+        }
+        select.cond_where(cond);
+        select.limit(1);
+        let row = self
+            .db
+            .query_one_raw(self.statement(&select))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        match row {
+            Some(row) => Ok(Some(self.row_to_record(&row, &cols)?)),
+            None => Ok(None),
+        }
+    }
+
+    async fn list_async(
+        &self,
+        ctx: &QueryCtx,
+        query: &ListQuery,
+    ) -> Result<Page<Record>, StorageError> {
+        query.validate(&self.schema)?;
+        let scope = self.scope_sql(ctx)?;
+        if matches!(scope, ScopeSql::Deny) {
+            return Ok(Page {
+                items: Vec::new(),
+                total: 0,
+                next_token: None,
+            });
+        }
+        let where_clause = self.where_sql(&scope, query)?;
+        let table = Alias::new(&self.schema.table);
+        let pk = self.schema.primary_key.clone();
+
+        let total = self.count_matching(&table, &where_clause).await?;
+
+        let cols = self.select_columns(&query.mask);
+        let select = list_select(&self.schema.table, &pk, &cols, where_clause.as_ref(), query)?;
+
+        let rows = self
+            .db
+            .query_all_raw(self.statement(&select))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        let mut items: Vec<Record> = rows
+            .iter()
+            .map(|row| self.row_to_record(row, &cols))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut next_token = None;
+        if let Paging::Token { limit, .. } = &query.paging {
+            if items.len() > usize::try_from(*limit).unwrap_or(usize::MAX) {
+                items.pop();
+                let last_id = items
+                    .last()
+                    .and_then(|row| row.get(&pk))
+                    .and_then(Value::as_i64)
+                    .ok_or_else(|| {
+                        StorageError::Backend("cursor page lost its primary key".into())
+                    })?;
+                next_token = Some(rushwind_storage::encode_cursor(last_id));
+            }
+        }
+
+        let items = items
+            .into_iter()
+            .map(|row| self.project(&query.mask, row))
+            .collect();
+        Ok(Page {
+            items,
+            total,
+            next_token,
+        })
+    }
+
+    async fn count_async(
+        &self,
+        ctx: &QueryCtx,
+        filter: Option<FilterExpr>,
+    ) -> Result<u64, StorageError> {
+        if let Some(filter) = &filter {
+            filter.validate(&self.schema)?;
+        }
+        let scope = self.scope_sql(ctx)?;
+        if matches!(scope, ScopeSql::Deny) {
+            return Ok(0);
+        }
+        let where_clause = self.where_sql(
+            &scope,
+            &ListQuery {
+                filter,
+                ..ListQuery::default()
+            },
+        )?;
+        self.count_matching(&Alias::new(&self.schema.table), &where_clause)
+            .await
+    }
+
+    /// One INSERT for a validated row; returns the primary key it landed on.
+    async fn insert_async<C: ConnectionTrait>(
+        &self,
+        conn: &C,
+        row: &Record,
+    ) -> Result<i64, StorageError> {
+        let pk = self.schema.primary_key.clone();
+        let explicit = match row.get(pk.as_str()) {
+            Some(Value::Int(existing)) if *existing > 0 => Some(*existing),
+            _ => None,
+        };
+        let mut columns: Vec<Alias> = Vec::new();
+        let mut values: Vec<Expr> = Vec::new();
+        for column in &self.schema.columns {
+            if column.name == pk && explicit.is_none() {
+                continue; // let the engine generate the rowid
+            }
+            let value = if column.name == pk {
+                Value::Int(explicit.expect("pk present when explicit"))
+            } else {
+                row.get(&column.name).cloned().unwrap_or(Value::Null)
+            };
+            columns.push(Alias::new(&column.name));
+            values.push(bind(&value));
+        }
+        let mut insert = Query::insert();
+        insert
+            .into_table(Alias::new(&self.schema.table))
+            .columns(columns)
+            .values(values)
+            .map_err(|e| StorageError::InvalidQuery(e.to_string()))?;
+        let exec = conn
+            .execute_raw(self.statement(&insert))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        Ok(match explicit {
+            Some(id) => id,
+            None => i64::try_from(exec.last_insert_id())
+                .map_err(|_| StorageError::Backend("generated primary key out of range".into()))?,
+        })
+    }
+
+    async fn create_async(&self, ctx: &QueryCtx, row: Record) -> Result<Record, StorageError> {
+        self.validate_row(&row)?;
+        let id = self.insert_async(&self.db, &row).await?;
+        let stored = self.fetch_by_pk_unscoped(id).await?;
+        self.audit(ctx, AuditAction::Create, Some(Value::Int(id)));
+        Ok(stored)
+    }
+
+    async fn batch_create_async(
+        &self,
+        ctx: &QueryCtx,
+        rows: Vec<Record>,
+    ) -> Result<Vec<Record>, StorageError> {
+        for row in &rows {
+            self.validate_row(row)?;
+        }
+        let txn = self.db.begin().await.map_err(|e| self.map_err(e))?;
+        let mut ids = Vec::with_capacity(rows.len());
+        for row in &rows {
+            ids.push(self.insert_async(&txn, row).await?);
+        }
+        txn.commit().await.map_err(|e| self.map_err(e))?;
+        let mut stored = Vec::with_capacity(ids.len());
+        for id in ids {
+            stored.push(self.fetch_by_pk_unscoped(id).await?);
+        }
+        self.audit(ctx, AuditAction::BatchCreate, None);
+        Ok(stored)
+    }
+
+    async fn update_async(
+        &self,
+        ctx: &QueryCtx,
+        id: Value,
+        patch: Record,
+    ) -> Result<Record, StorageError> {
+        self.validate_row(&patch)?;
+        let id = expect_id(&id)?;
+        let scope = self.scope_sql(ctx)?;
+        if matches!(scope, ScopeSql::Deny) {
+            return Err(StorageError::NotFound);
+        }
+        let pk = self.schema.primary_key.clone();
+        if let Some(new_pk) = patch.get(pk.as_str()) {
+            if new_pk != &Value::Null && new_pk.as_i64() != Some(id) {
+                return Err(StorageError::InvalidQuery(
+                    "update patches cannot move the primary key".into(),
+                ));
+            }
+        }
+        let mut update = Query::update();
+        update.table(Alias::new(&self.schema.table));
+        let mut touched = 0;
+        for column in &self.schema.columns {
+            if let Some(value) = patch.get(&column.name) {
+                let bound = if column.name == pk {
+                    Value::Int(id)
+                } else {
+                    value.clone()
+                };
+                update.value(Alias::new(&column.name), bind(&bound));
+                touched += 1;
+            }
+        }
+        if touched > 0 {
+            let mut cond = Condition::all().add(Expr::col(Alias::new(&pk)).eq(id));
+            if let ScopeSql::Pass(Some(scope_cond)) = &scope {
+                cond = cond.add(scope_cond.clone());
+            }
+            update.cond_where(cond);
+            let exec = self
+                .db
+                .execute_raw(self.statement(&update))
+                .await
+                .map_err(|e| self.map_err(e))?;
+            if exec.rows_affected() == 0 {
+                return Err(StorageError::NotFound);
+            }
+        }
+        match self.get_async(ctx, Value::Int(id)).await? {
+            Some(row) => {
+                self.audit(ctx, AuditAction::Update, Some(Value::Int(id)));
+                Ok(row)
+            }
+            None => Err(StorageError::NotFound),
+        }
+    }
+
+    async fn upsert_async(&self, ctx: &QueryCtx, row: Record) -> Result<Record, StorageError> {
+        self.validate_row(&row)?;
+        let pk = self.schema.primary_key.clone();
+        let id = match row.get(pk.as_str()) {
+            Some(Value::Int(existing)) if *existing > 0 => *existing,
+            _ => {
+                return Err(StorageError::InvalidQuery(
+                    "upsert requires an explicit primary key".into(),
+                ))
+            }
+        };
+        // The conflict branch updates every column the payload carries
+        // except the primary key itself.
+        let update_columns: Vec<Alias> = self
+            .schema
+            .columns
+            .iter()
+            .filter(|c| row.get(&c.name).is_some() && c.name != pk)
+            .map(|c| Alias::new(&c.name))
+            .collect();
+        if update_columns.is_empty() {
+            return Err(StorageError::InvalidQuery(
+                "upsert payload carries no columns beyond the primary key".into(),
+            ));
+        }
+        let mut columns: Vec<Alias> = Vec::new();
+        let mut values: Vec<Expr> = Vec::new();
+        for column in &self.schema.columns {
+            let value = row.get(&column.name).cloned().unwrap_or(Value::Null);
+            columns.push(Alias::new(&column.name));
+            values.push(bind(&value));
+        }
+        let mut insert = Query::insert();
+        insert
+            .into_table(Alias::new(&self.schema.table))
+            .columns(columns)
+            .values(values)
+            .map_err(|e| StorageError::InvalidQuery(e.to_string()))?
+            .on_conflict(
+                OnConflict::column(Alias::new(&pk))
+                    .update_columns(update_columns)
+                    .to_owned(),
+            );
+        self.db
+            .execute_raw(self.statement(&insert))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        let stored = self.fetch_by_pk_unscoped(id).await?;
+        self.audit(ctx, AuditAction::Upsert, Some(Value::Int(id)));
+        Ok(stored)
+    }
+
+    async fn delete_async(&self, ctx: &QueryCtx, id: Value) -> Result<(), StorageError> {
+        let id = expect_id(&id)?;
+        let scope = self.scope_sql(ctx)?;
+        if matches!(scope, ScopeSql::Deny) {
+            return Err(StorageError::NotFound);
+        }
+        let pk = self.schema.primary_key.clone();
+        let mut delete = Query::delete();
+        delete.from_table(Alias::new(&self.schema.table));
+        let mut cond = Condition::all().add(Expr::col(Alias::new(&pk)).eq(id));
+        if let ScopeSql::Pass(Some(scope_cond)) = &scope {
+            cond = cond.add(scope_cond.clone());
+        }
+        delete.cond_where(cond);
+        let exec = self
+            .db
+            .execute_raw(self.statement(&delete))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        if exec.rows_affected() == 0 {
+            return Err(StorageError::NotFound);
+        }
+        self.audit(ctx, AuditAction::Delete, Some(Value::Int(id)));
+        Ok(())
+    }
+}
+
+impl Repository for SeaRepo {
+    fn schema(&self) -> &Schema {
+        &self.schema
+    }
+
+    fn get(&self, ctx: QueryCtx, id: Value) -> RepoFuture<'_, Option<Record>> {
+        Box::pin(async move { self.get_async(&ctx, id).await })
+    }
+
+    fn list<'a>(&'a self, ctx: QueryCtx, query: &'a ListQuery) -> RepoFuture<'a, Page<Record>> {
+        Box::pin(async move { self.list_async(&ctx, query).await })
+    }
+
+    fn count(&self, ctx: QueryCtx, filter: Option<FilterExpr>) -> RepoFuture<'_, u64> {
+        Box::pin(async move { self.count_async(&ctx, filter).await })
+    }
+
+    fn create(&self, ctx: QueryCtx, row: Record) -> RepoFuture<'_, Record> {
+        Box::pin(async move { self.create_async(&ctx, row).await })
+    }
+
+    fn batch_create(&self, ctx: QueryCtx, rows: Vec<Record>) -> RepoFuture<'_, Vec<Record>> {
+        Box::pin(async move { self.batch_create_async(&ctx, rows).await })
+    }
+
+    fn update(&self, ctx: QueryCtx, id: Value, patch: Record) -> RepoFuture<'_, Record> {
+        Box::pin(async move { self.update_async(&ctx, id, patch).await })
+    }
+
+    fn upsert(&self, ctx: QueryCtx, row: Record) -> RepoFuture<'_, Record> {
+        Box::pin(async move { self.upsert_async(&ctx, row).await })
+    }
+
+    fn delete(&self, ctx: QueryCtx, id: Value) -> RepoFuture<'_, ()> {
+        Box::pin(async move { self.delete_async(&ctx, id).await })
+    }
+}
+
+/// The viewer scope rendered for SQL: denied (empty everything) or a
+/// conjoinable predicate.
+enum ScopeSql {
+    /// The viewer may see nothing; engines short-circuit.
+    Deny,
+    /// The extra predicate to AND in, if any.
+    Pass(Option<Condition>),
+}
+
+fn expect_id(id: &Value) -> Result<i64, StorageError> {
+    id.as_i64()
+        .ok_or_else(|| StorageError::InvalidQuery("the primary key must be an integer".into()))
+}
+
+/// Binds a contract [`Value`] as a SQL parameter.
+fn bind(value: &Value) -> Expr {
+    match value {
+        Value::Null => Expr::val(Option::<i64>::None),
+        Value::Bool(b) => Expr::val(*b),
+        Value::Int(i) => Expr::val(*i),
+        Value::Real(f) => Expr::val(*f),
+        Value::Text(s) => Expr::val(s.clone()),
+    }
+}
+
+/// Translates a filter node into a SQL condition — the counterpart of the
+/// in-memory engine's evaluator; the conformance suite pins them together.
+fn translate(node: &FilterNode) -> Result<Condition, StorageError> {
+    match node {
+        FilterNode::All(children) => {
+            let mut cond = Condition::all();
+            for child in children {
+                cond = cond.add(translate(child)?);
+            }
+            Ok(cond)
+        }
+        FilterNode::Any(children) => {
+            let mut cond = Condition::any();
+            for child in children {
+                cond = cond.add(translate(child)?);
+            }
+            Ok(cond)
+        }
+        FilterNode::Cond(cond) => {
+            let col = Expr::col(Alias::new(&cond.field));
+            let first = || cond.values.first().cloned().unwrap_or(Value::Null);
+            let pattern = |fmt: fn(&str) -> String| match first().as_str() {
+                Some(s) => fmt(s),
+                None => String::new(),
+            };
+            let expr: Expr = match cond.op {
+                Op::Eq => col.eq(bind(&first())),
+                Op::NotEq => col.ne(bind(&first())),
+                Op::Gt => col.gt(bind(&first())),
+                Op::Gte => col.gte(bind(&first())),
+                Op::Lt => col.lt(bind(&first())),
+                Op::Lte => col.lte(bind(&first())),
+                Op::In => col.is_in(cond.values.iter().map(bind).collect::<Vec<Expr>>()),
+                Op::NotIn => col.is_not_in(cond.values.iter().map(bind).collect::<Vec<Expr>>()),
+                Op::Like => col.like(pattern(|s| s.to_owned())),
+                Op::NotLike => col.not_like(pattern(|s| s.to_owned())),
+                // No ILIKE in SQLite/MySQL: LOWER on the column, folded in Rust.
+                Op::Ilike => Expr::from(Func::lower(col)).like(pattern(|s| s.to_lowercase())),
+                Op::IsNull => col.is_null(),
+                Op::IsNotNull => col.is_not_null(),
+                Op::Between => {
+                    let lo = cond.values.first().cloned().unwrap_or(Value::Null);
+                    let hi = cond.values.get(1).cloned().unwrap_or(Value::Null);
+                    col.between(bind(&lo), bind(&hi))
+                }
+                Op::NotBetween => {
+                    let lo = cond.values.first().cloned().unwrap_or(Value::Null);
+                    let hi = cond.values.get(1).cloned().unwrap_or(Value::Null);
+                    col.not_between(bind(&lo), bind(&hi))
+                }
+                Op::Contains => col.like(pattern(|s| format!("%{s}%"))),
+                Op::StartsWith => col.like(pattern(|s| format!("{s}%"))),
+                Op::EndsWith => col.like(pattern(|s| format!("%{s}"))),
+            };
+            Ok(expr.into())
+        }
+    }
+}
+
+// ---- pure statement builders (unit-tested against every dialect) ----------
+
+/// The DDL counterpart of a [`Schema`]: `CREATE TABLE IF NOT EXISTS` with a
+/// rowid-aliasing `INTEGER PRIMARY KEY` for SQLite.
+fn create_table_statement(schema: &Schema) -> TableCreateStatement {
+    let mut create = Table::create();
+    create.table(Alias::new(&schema.table)).if_not_exists();
+    for column in &schema.columns {
+        let mut def = ColumnDef::new(Alias::new(&column.name));
+        match column.kind {
+            ColumnKind::Bool => {
+                def.boolean();
+            }
+            // INTEGER (not BIGINT): SQLite only aliases the rowid to an
+            // exact `INTEGER PRIMARY KEY`, which generated ids rely on.
+            ColumnKind::Int => {
+                def.integer();
+            }
+            ColumnKind::Real => {
+                def.double();
+            }
+            ColumnKind::Text => {
+                def.text();
+            }
+        }
+        if column.name == schema.primary_key {
+            def.primary_key();
+        }
+        create.col(def);
+    }
+    create
+}
+
+/// The page-of-rows SELECT for a list query: projection, WHERE, ordering
+/// (primary key ascending by default), and the paging clause — token paging
+/// continues after the cursor with a one-row peek.
+fn list_select(
+    table: &str,
+    pk: &str,
+    cols: &[String],
+    where_clause: Option<&Condition>,
+    query: &ListQuery,
+) -> Result<SelectStatement, StorageError> {
+    let mut select = Query::select();
+    select.from(Alias::new(table));
+    for col in cols {
+        select.column(Alias::new(col));
+    }
+    if let Some(cond) = where_clause {
+        select.cond_where(cond.clone());
+    }
+    if query.sort.is_default() {
+        select.order_by(Alias::new(pk), Order::Asc);
+    } else {
+        for term in &query.sort.fields {
+            let order = match term.dir {
+                SortDir::Asc => Order::Asc,
+                SortDir::Desc => Order::Desc,
+            };
+            select.order_by(Alias::new(&term.field), order);
+        }
+    }
+    let limit = query.paging.limit();
+    match &query.paging {
+        Paging::Token { token, .. } => {
+            if !token.is_empty() {
+                let last = rushwind_storage::decode_cursor(token)?;
+                select.cond_where(Condition::all().add(Expr::col(Alias::new(pk)).gt(last)));
+            }
+            // Peek one row past the page to learn whether the stream continues.
+            select.limit(u64::from(limit) + 1);
+        }
+        Paging::Page { page, .. } => {
+            select
+                .offset((u64::from(*page - 1)) * u64::from(limit))
+                .limit(u64::from(limit));
+        }
+        Paging::Offset { offset, .. } => {
+            select.offset(*offset).limit(u64::from(limit));
+        }
+    }
+    Ok(select)
+}
+
+#[cfg(test)]
+mod sql_snapshots {
+    //! Dialect snapshots: the exact SQL every backend receives, pinned as
+    //! strings — no live database needed to catch a translation regression.
+
+    use super::*;
+    use rushwind_storage::Sort;
+
+    fn schema() -> Schema {
+        Schema::builder("widgets", "id")
+            .column("name", ColumnKind::Text)
+            .column("age", ColumnKind::Int)
+            .column("score", ColumnKind::Real)
+            .column("owner_id", ColumnKind::Int)
+            .column("unit_id", ColumnKind::Int)
+            .build()
+            .expect("valid schema")
+    }
+
+    fn render(stmt: &impl Buildable, backend: DbBackend) -> (String, usize) {
+        let (sql, values) = stmt.build_for(backend);
+        (sql, values.0.len())
+    }
+
+    #[test]
+    fn ddl_per_dialect() {
+        let create = create_table_statement(&schema());
+        let (sqlite, _) = render(&create, DbBackend::Sqlite);
+        assert!(
+            sqlite.contains("CREATE TABLE IF NOT EXISTS \"widgets\""),
+            "{sqlite}"
+        );
+        // Exact `integer PRIMARY KEY` (no BIGINT, no NOT NULL noise): SQLite
+        // aliases the rowid only for this spelling, which generated ids and
+        // last_insert_id rely on.
+        assert!(
+            sqlite.contains("\"id\" integer PRIMARY KEY"),
+            "sqlite pk must alias the rowid: {sqlite}"
+        );
+
+        let (mysql, _) = render(&create, DbBackend::MySql);
+        assert!(
+            mysql.contains("CREATE TABLE IF NOT EXISTS `widgets`"),
+            "{mysql}"
+        );
+        assert!(mysql.contains("`age` int"), "{mysql}");
+
+        let (postgres, _) = render(&create, DbBackend::Postgres);
+        assert!(
+            postgres.contains("CREATE TABLE IF NOT EXISTS \"widgets\""),
+            "{postgres}"
+        );
+        assert!(postgres.contains("\"age\" integer"), "{postgres}");
+    }
+
+    #[test]
+    fn filter_placeholders_per_dialect() {
+        let filter = FilterExpr::all([
+            FilterExpr::cond("age", Op::Gte, [Value::Int(10)]),
+            FilterExpr::cond("name", Op::Like, [Value::Text("%a%".into())]),
+            FilterExpr::cond("score", Op::IsNull, []),
+        ]);
+        let select = list_select(
+            "widgets",
+            "id",
+            &["id".into(), "name".into()],
+            Some(&translate(filter.node()).expect("translates")),
+            &ListQuery::page(2, 10),
+        )
+        .expect("builds");
+
+        let (sqlite, binds) = render(&select, DbBackend::Sqlite);
+        assert_eq!(
+            sqlite,
+            r#"SELECT "id", "name" FROM "widgets" WHERE "age" >= ? AND "name" LIKE ? AND "score" IS NULL ORDER BY "id" ASC LIMIT ? OFFSET ?"#
+        );
+        assert_eq!(
+            binds, 4,
+            "two filter operands plus the bound limit and offset"
+        );
+
+        let (mysql, _) = render(&select, DbBackend::MySql);
+        assert_eq!(
+            mysql,
+            "SELECT `id`, `name` FROM `widgets` WHERE `age` >= ? AND `name` LIKE ? AND `score` IS NULL ORDER BY `id` ASC LIMIT ? OFFSET ?"
+        );
+
+        let (postgres, _) = render(&select, DbBackend::Postgres);
+        assert_eq!(
+            postgres,
+            "SELECT \"id\", \"name\" FROM \"widgets\" WHERE \"age\" >= $1 AND \"name\" LIKE $2 AND \"score\" IS NULL ORDER BY \"id\" ASC LIMIT $3 OFFSET $4"
+        );
+    }
+
+    #[test]
+    fn ilike_lowers_the_column() {
+        let filter = FilterExpr::cond("name", Op::Ilike, [Value::Text("%E%".into())]);
+        let select = list_select(
+            "widgets",
+            "id",
+            &["id".into()],
+            Some(&translate(filter.node()).expect("translates")),
+            &ListQuery::default(),
+        )
+        .expect("builds");
+        let (sqlite, _) = render(&select, DbBackend::Sqlite);
+        assert_eq!(
+            sqlite,
+            r#"SELECT "id" FROM "widgets" WHERE LOWER("name") LIKE ? ORDER BY "id" ASC LIMIT ? OFFSET ?"#
+        );
+    }
+
+    #[test]
+    fn in_and_between_bind_every_operand() {
+        let filter = FilterExpr::all([
+            FilterExpr::cond(
+                "unit_id",
+                Op::In,
+                [Value::Int(10), Value::Int(20), Value::Int(30)],
+            ),
+            FilterExpr::cond("age", Op::Between, [Value::Int(5), Value::Int(25)]),
+        ]);
+        let select = list_select(
+            "widgets",
+            "id",
+            &["id".into()],
+            Some(&translate(filter.node()).expect("translates")),
+            &ListQuery::default(),
+        )
+        .expect("builds");
+        let (sqlite, binds) = render(&select, DbBackend::Sqlite);
+        assert!(sqlite.contains(r#""unit_id" IN (?, ?, ?)"#), "{sqlite}");
+        assert!(sqlite.contains(r#""age" BETWEEN ? AND ?"#), "{sqlite}");
+        assert_eq!(
+            binds, 7,
+            "three IN operands plus two BETWEEN bounds plus limit and offset"
+        );
+    }
+
+    #[test]
+    fn token_cursor_filters_and_peeks_one_row() {
+        let query = ListQuery {
+            paging: Paging::Token {
+                token: rushwind_storage::encode_cursor(42),
+                limit: 3,
+            },
+            ..ListQuery::default()
+        };
+        let select = list_select("widgets", "id", &["id".into()], None, &query).expect("builds");
+        let (sqlite, binds) = render(&select, DbBackend::Sqlite);
+        assert_eq!(
+            sqlite,
+            r#"SELECT "id" FROM "widgets" WHERE "id" > ? ORDER BY "id" ASC LIMIT ?"#
+        );
+        assert_eq!(binds, 2, "the cursor id plus the peek limit");
+    }
+
+    #[test]
+    fn default_sort_is_primary_key_ascending() {
+        let select = list_select(
+            "widgets",
+            "id",
+            &["id".into()],
+            None,
+            &ListQuery {
+                paging: Paging::Offset {
+                    offset: 5,
+                    limit: 7,
+                },
+                ..ListQuery::default()
+            },
+        )
+        .expect("builds");
+        let (sqlite, _) = render(&select, DbBackend::Sqlite);
+        assert_eq!(
+            sqlite,
+            r#"SELECT "id" FROM "widgets" ORDER BY "id" ASC LIMIT ? OFFSET ?"#
+        );
+    }
+
+    #[test]
+    fn explicit_sort_terms_render_in_order() {
+        let query = ListQuery {
+            paging: Paging::Offset {
+                offset: 0,
+                limit: 9,
+            },
+            sort: Sort::by("unit_id", SortDir::Asc).then("age", SortDir::Desc),
+            ..ListQuery::default()
+        };
+        let select = list_select("widgets", "id", &["id".into()], None, &query).expect("builds");
+        let (sqlite, _) = render(&select, DbBackend::Sqlite);
+        assert_eq!(
+            sqlite,
+            r#"SELECT "id" FROM "widgets" ORDER BY "unit_id" ASC, "age" DESC LIMIT ? OFFSET ?"#
+        );
+    }
+
+    #[test]
+    fn garbage_cursor_is_invalid_query() {
+        let query = ListQuery {
+            paging: Paging::Token {
+                token: "!!!".into(),
+                limit: 3,
+            },
+            ..ListQuery::default()
+        };
+        let err = list_select("widgets", "id", &["id".into()], None, &query)
+            .expect_err("garbage cursor must fail");
+        assert!(matches!(err, StorageError::InvalidQuery(_)));
+    }
+}

@@ -1,0 +1,19 @@
+[package]
+name = "rushwind-storage-seaorm"
+description = "SeaORM-backed engine for the RushWind storage contract: dynamic repository over SQL backends."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-storage = { workspace = true }
+sea-orm = { workspace = true }
+
+[dev-dependencies]
+rushwind-testkit = { workspace = true, features = ["storage"] }
+tokio = { workspace = true, features = ["macros", "rt"] }

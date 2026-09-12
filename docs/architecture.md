@@ -9,6 +9,7 @@
 | `rushwind-transport` | `tokio-util`（仅 `CancellationToken` 包装） | 契约：`Server` trait、`StopSignal`、`Instance`、`ServerError`。**唯一允许"只有接口"的 crate** |
 | `rushwind-core` | `tokio`（signal/time/sync）、`futures`（`FuturesUnordered`、`catch_unwind`） | 生命周期编排。不持有任何业务概念 |
 | `rushwind-storage` | 无（刻意零依赖） | 存储契约：`Repository` trait、`Schema`/`Record`/`Value` 动态协议、三种分页、过滤器树、Viewer 租户、审计钩子 |
+| `rushwind-storage-cache` | `tokio`（仅 oneshot） | Cache-Aside 装饰器：SingleFlight 合并发、作用域键、generation 防陈旧回填。任意 `Repository` 之上可叠 |
 | `rushwind-testkit` | 上两者 + `tokio::time`（探针延迟） | 一致性套件（传输 + 存储两套）。见文末清单 |
 | `examples/*` | 按需 | `publish = false` 的演示程序 |
 
@@ -104,7 +105,31 @@
 2. **create 回填主键**，所有写操作返回完整存储行。
 3. **过滤器翻译必须忠实**（含嵌套组），或以 `InvalidQuery` 拒绝——校验先于引擎触达。
 
+### 语法层：proto 契约是唯一事实来源
+
+go-crud 的两个精髓在此落地。其一，**查询语法的操作符分类学**（`EQ`/`LIKE`/`CONTAINS`/`GTE`/`IS_NULL`……29 个，血统直追 Django ORM 的 field lookups）；其二，**契约由 proto 定义**——`proto/rushwind/storage/v1/query.proto` 是线格式的唯一事实来源，`FilterExpr`/`FilterCondition`/`PaginationRequest`/`Sorting`/`FieldMask` 与 go-crud 的 `api/` 同形，Go 与 Rust 服务交换字节一致的消息。
+
+`rushwind-storage-proto` 从这份 proto **生成**两种产物（prost 出类型、pbjson 出 protojson serde），生成物永不手写，线格式因此不可能漂移。`wire` 模块把生成类型翻译成契约类型，29 操作符映射规则：
+
+| wire 操作符 | 契约归属 |
+|:---|:---|
+| `EQ` `EXACT` | `Eq` |
+| `NEQ` `GT` `GTE` `LT` `LTE` | 同名直映 |
+| `LIKE` `NOT_LIKE` `ILIKE` | `Like` `NotLike` `Ilike` |
+| `IN` `NIN` | `In` `NotIn` |
+| `IS_NULL` `IS_NOT_NULL` | 同名直映 |
+| `BETWEEN` | `Between` |
+| `CONTAINS` `STARTS_WITH` `ENDS_WITH` | 同名直映 |
+| `ICONTAINS` `ISTARTS_WITH` `IENDS_WITH` | 折叠为 `Ilike` 模式（`%v%` / `v%` / `%v`）——每个 SQL 引擎已说着的方言 |
+| `REGEXP` `IREGEXP` `JSON_CONTAINS` `ARRAY_CONTAINS` `EXISTS` `SEARCH` `IEXACT`；`date_part`/`json_path` 扩展 | **`Unsupported`**，在 wire 边界点名拒绝，绝不静默丢弃 |
+
+三种分页经 `PaginationRequest` oneof 进入：`NoPaging` 映射为 `Offset{0, MAX_LIMIT}`（契约允许的最大窗口）。protojson 之外，契约 crate 还内建 **AIP 文本子集**解析器（`FilterExpr::from_aip`，零依赖手写）：`name = "bolt" AND (age >= 10 OR role IN ("a","b"))`，AND 优先于 OR、并列即隐式 AND、`NOT` 翻转有精确补运算的操作符——与 protojson 两条路汇入同一棵 [`FilterExpr`] 树，端到端测试钉死两条路在引擎上的结果一致。
+
+枚举值的 protojson 形式是 proto 成员名（`"IS_NULL"`，不是驼峰）；FieldMask 用 go-crud 自己的 `{"paths":[...]}` 消息，而非 well-known 类型的逗号串。
+
 引擎适配器只有两个：`rushwind-storage-memory`（语义基准 + 零驱动即时可用）与 `rushwind-storage-seaorm`（sea_orm 连接池/事务 + sea_query 动态拼句，SQLite 过套件；无需生成实体，Schema 即唯一事实来源）。内存引擎的存在不是多余的第二个样例——它让「同一过滤器树、两种引擎、逐行一致」成为套件可执行的断言，而非文档承诺。
+
+横切层以装饰器表达：`rushwind-storage-cache` 把 go-crud 的 Cache-Aside + SingleFlight 包成任意 `Repository` 之上的透明层。两条租户攸关的设计决策——**缓存键含 viewer 作用域**（`own(1)` 与 `own(2)` 永不共享条目，缓存无法跨租户泄漏），以及**失效即递增 per-key generation**（写事务落地前已出发的加载不得用旧行回填缓存）——各有一条行为测试钉死；装饰器本身还须整套通过 27 例一致性套件，证明其透明性。
 
 ## 与 go-wind 的语义差异
 

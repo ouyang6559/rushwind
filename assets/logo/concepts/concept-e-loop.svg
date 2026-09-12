@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="RushWind concept E — lifecycle loop">
+  <defs>
+    <linearGradient id="e-g" gradientUnits="userSpaceOnUse" x1="120" y1="400" x2="420" y2="120">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0A0F1E"/>
+
+  <!-- R -->
+  <g fill="none" stroke="url(#e-g)" stroke-width="46" stroke-linecap="round">
+    <path d="M 196 156 V 360"/>
+    <path d="M 196 156 H 280 A 52 52 0 0 1 280 260 H 196"/>
+    <path d="M 206 268 L 300 358"/>
+  </g>
+
+  <!-- lifecycle orbit: arc around the bowl, arrowhead clockwise -->
+  <g fill="none" stroke="url(#e-g)" stroke-width="22" stroke-linecap="round">
+    <path d="M 236 84 A 122 122 0 0 1 386 218"/>
+  </g>
+  <path d="M 404 172 L 398 232 L 344 206 Z" fill="#818CF8"/>
+</svg>

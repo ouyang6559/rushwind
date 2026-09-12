@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-testkit"
-description = "Cross-adapter lifecycle conformance suite for RushWind transports."
+description = "Cross-adapter conformance suites for RushWind: lifecycle (transports) and repository (storage engines)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,10 +10,17 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Repository conformance suite over the rushwind-storage contract.
+storage = ["dep:rushwind-storage"]
+
 [dependencies]
 rushwind-transport = { workspace = true }
 rushwind-core = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
+rushwind-storage = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
+rushwind-storage-memory = { workspace = true }
