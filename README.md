@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/rushwind-lockup-light.svg">
+  <img src="assets/logo/rushwind-lockup-dark.svg" alt="RushWind · 锐风" width="520">
+</picture>
+
 # RushWind · 锐风
 
 [English](./README_en.md) | **中文** | [日本語](./README_ja.md)
@@ -23,8 +28,8 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | 阶段 | 内容 |
 |:---|:---|
 | P0 | 生命周期核心、传输契约、一致性套件 |
-| P1 | `rushwind-transport-axum`（管理面/API，已交付）；`rushwind-transport-ws`（会话中间件链）← 当前 |
-| P2 | `rushwind-transport-quic`（QUIC/http3/webtransport）、`rushwind-transport-mqtt`（外部 broker 消费桥）、注册-only registry 薄片 |
+| P1 | `rushwind-transport-axum`（管理面/API）、`rushwind-transport-ws`（会话中间件链：门链 + 准入策略 + 会话停机总线，见 [session-middleware.md](./docs/session-middleware.md)） |
+| P2 | `rushwind-transport-quic`（QUIC/http3/webtransport）、`rushwind-transport-mqtt`（外部 broker 消费桥）、注册-only registry 薄片 ← 当前 |
 | P3 | `rushwind-bootstrap`（serde 配置驱动装配） |
 
 ## 仓库布局
@@ -34,9 +39,11 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-core` | 生命周期编排：并发启动、级联停机、分阶段限时、结果观察 |
 | `crates/rushwind-transport` | 契约层：`Server` trait、`StopSignal`、`Instance`、`ServerError` |
 | `crates/rushwind-transport-axum` | axum 适配器：`Router` 接入生命周期，优雅停机映射见架构文档 |
+| `crates/rushwind-transport-ws` | WS 会话路由构建器：门链 + 准入策略 + 会话停机总线，契约见会话中间件文档 |
 | `crates/rushwind-testkit` | 跨适配器一致性测试套件——任何传输必须整套通过 |
 | `examples/multi-server` | 双服务器生命周期演示（级联停机、阶段顺序） |
 | `examples/axum-admin` | axum 适配器演示：健康路由 + 信号驱动的优雅停机 |
+| `examples/ws-gateway` | WS 网关演示：门拒绝 + 会话上限 + 生命周期级联的会话关闭 |
 
 ## 生命周期
 

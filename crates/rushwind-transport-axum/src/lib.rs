@@ -25,6 +25,17 @@
 //! Plain HTTP only. TLS termination belongs in a front proxy; if TLS
 //! termination inside the process is ever needed, it arrives as a separate
 //! adapter rather than a feature of this one.
+//!
+//! # Session-shutdown bus
+//!
+//! Routes that carry long-lived sessions (e.g.
+//! `rushwind-transport-ws`) cannot see this server's stop signal on their
+//! own — axum hands routes an opaque handler closure at assembly time,
+//! before any lifecycle exists. [`AxumServer::with_aux_shutdown`] lets
+//! such routes register a shutdown bus; when the lifecycle's stop signal
+//! fires, this server relays it onto every registered bus so mounted
+//! session handlers can wind down cooperatively instead of lingering
+//! until the process exits. See `docs/session-middleware.md`.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -50,6 +61,9 @@ pub struct AxumServer {
     /// The router served on start. Cloned into the serve future because
     /// `axum::Router` is cheaply cloneable (it is an `Arc` internally).
     router: Router,
+    /// Session-shutdown buses registered by mounted session routes; see the
+    /// crate-level "Session-shutdown bus" section.
+    aux_shutdown: Vec<StopSignal>,
 }
 
 impl AxumServer {
@@ -69,6 +83,7 @@ impl AxumServer {
             listener: Mutex::new(Some(listener)),
             local_addr,
             router,
+            aux_shutdown: Vec::new(),
         })
     }
 
@@ -77,6 +92,18 @@ impl AxumServer {
     /// port.
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
+    }
+
+    /// Registers a session-shutdown bus (obtained from a session route
+    /// builder such as `rushwind-transport-ws`'s `WsRoute::build`) with
+    /// this server. When the lifecycle's stop signal fires, the signal is
+    /// relayed onto every registered bus.
+    ///
+    /// Call before registering the server with the application — after
+    /// [`Server::start`] runs, registration has no effect.
+    pub fn with_aux_shutdown(mut self, bus: StopSignal) -> Self {
+        self.aux_shutdown.push(bus);
+        self
     }
 }
 
@@ -100,6 +127,10 @@ impl Server for AxumServer {
             }
         };
         let app = self.router.clone();
+        // Relay future: wait for the lifecycle stop signal, then propagate
+        // it onto every registered session-shutdown bus so mounted session
+        // handlers can wind down alongside the server itself.
+        let aux = self.aux_shutdown.clone();
         Box::pin(async move {
             let listener = match tokio::net::TcpListener::from_std(listener) {
                 Ok(l) => l,
@@ -107,10 +138,14 @@ impl Server for AxumServer {
                     return Err(ServerError::Failed(format!("from_std: {e}")));
                 }
             };
+            let shutdown = async move {
+                stop.wait().await;
+                for bus in aux {
+                    bus.signal();
+                }
+            };
             let served = axum::serve(listener, app)
-                .with_graceful_shutdown(async move {
-                    stop.wait().await;
-                })
+                .with_graceful_shutdown(shutdown)
                 .await;
             match served {
                 // Per axum's contract the serve future returns Ok only

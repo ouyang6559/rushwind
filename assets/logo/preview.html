@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>RushWind · 锐风 — Logo Preview</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; background: #E2E8F0; }
+  .wrap { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; }
+  .panel { padding: 56px; }
+  .light { background: #FFFFFF; }
+  .dark { background: linear-gradient(160deg, #101828, #0A0F1E); }
+  h2 { font-size: 12px; letter-spacing: .2em; text-transform: uppercase; opacity: .45; margin: 0 0 22px; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 36px; flex-wrap: wrap; margin-bottom: 52px; }
+  .ladder { display: flex; align-items: flex-end; gap: 28px; }
+  .cell { text-align: center; }
+  .cap { font-size: 11px; opacity: .4; margin-top: 8px; }
+  .dark .sw i { outline: 1px solid rgba(255,255,255,.12); outline-offset: -1px; }
+  .swatches { display: flex; gap: 14px; flex-wrap: wrap; }
+  .sw { width: 92px; }
+  .sw i { display: block; height: 56px; border-radius: 10px; }
+  .sw b { display: block; font-size: 11px; font-weight: 600; margin-top: 7px; opacity: .75; }
+  .lockup { width: 560px; max-width: 100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="panel light">
+    <h2>Icon — light backgrounds</h2>
+    <div class="row">
+      <img src="rushwind-icon.svg" width="192" alt="">
+      <img src="rushwind-icon-light.svg" width="192" alt="">
+      <img src="rushwind-icon-mono.svg" width="192" alt="">
+    </div>
+
+    <h2>Lockup — light backgrounds</h2>
+    <div class="row">
+      <img class="lockup" src="rushwind-lockup-dark.svg" alt="">
+    </div>
+
+    <h2>Scale test</h2>
+    <div class="ladder">
+      <div class="cell"><img src="rushwind-icon.svg" width="64" alt=""><div class="cap">64</div></div>
+      <div class="cell"><img src="rushwind-icon.svg" width="40" alt=""><div class="cap">40</div></div>
+      <div class="cell"><img src="rushwind-icon.svg" width="32" alt=""><div class="cap">32</div></div>
+      <div class="cell"><img src="rushwind-icon.svg" width="24" alt=""><div class="cap">24</div></div>
+      <div class="cell"><img src="rushwind-icon.svg" width="16" alt=""><div class="cap">16</div></div>
+    </div>
+  </div>
+
+  <div class="panel dark">
+    <h2>Icon — dark backgrounds</h2>
+    <div class="row">
+      <img src="rushwind-icon.svg" width="192" alt="">
+      <img src="rushwind-icon-mono-inverse.svg" width="192" alt="">
+    </div>
+
+    <h2>Lockup — dark backgrounds</h2>
+    <div class="row">
+      <img class="lockup" src="rushwind-lockup-light.svg" alt="">
+    </div>
+
+    <h2>Palette</h2>
+    <div class="swatches">
+      <div class="sw"><i style="background:#2DD4BF"></i><b>Wind Teal</b></div>
+      <div class="sw"><i style="background:#38BDF8"></i><b>Wind Sky</b></div>
+      <div class="sw"><i style="background:#818CF8"></i><b>Wind Indigo</b></div>
+      <div class="sw"><i style="background:#16233F"></i><b>Deep Navy</b></div>
+      <div class="sw"><i style="background:#0A0F1E"></i><b>Ink</b></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

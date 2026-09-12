@@ -17,9 +17,11 @@
 pub mod error;
 pub mod instance;
 pub mod server;
+pub mod session;
 pub mod signal;
 
 pub use error::ServerError;
 pub use instance::Instance;
 pub use server::{Server, ServerFuture};
+pub use session::{GateChain, GateVerdict, Handshake, HandshakeGate, Rejection, SessionPolicy};
 pub use signal::StopSignal;
