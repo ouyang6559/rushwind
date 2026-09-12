@@ -27,7 +27,7 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | P0 | core lifecycle, transport contracts, conformance suite |
 | P1 | `rushwind-transport-axum` (admin/API), `rushwind-transport-ws` (session middleware chain: gates + admission policy + session-shutdown bus, see [session-middleware.md](./docs/session-middleware.md), Chinese) |
 | P2 | `rushwind-transport-quic` (raw QUIC sessions + full session chain: gates/refuse, atomic admission, handshake deadline — delivered; h3/webtransport layering later); `rushwind-transport-mqtt` (external-broker consumer bridge — delivered); registration-only registry slice ← current |
-| storage | `rushwind-storage` (contract) + `rushwind-storage-memory` / `rushwind-storage-seaorm` engines, both conformance-green; `rushwind-storage-cache` (cache-aside + singleflight); `rushwind-storage-proto` (proto-defined contract + protojson + AIP text syntax); counterpart of [go-crud](https://github.com/tx7do/go-crud) |
+| storage | `rushwind-storage` (contract) + four engines: in-memory reference, SeaORM (SQLite/PostgreSQL/MySQL), MongoDB — each conformance-green or equivalently verified offline; `rushwind-storage-cache` (cache-aside + singleflight); `rushwind-storage-proto` (proto-defined contract + protojson + AIP text syntax); counterpart of [go-crud](https://github.com/tx7do/go-crud) |
 | P3 | `rushwind-bootstrap` (serde-based config-driven assembly) |
 
 ## Layout
@@ -42,9 +42,10 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `crates/rushwind-transport-mqtt` | MQTT consumer bridge: subscribes to an external broker, reconnect backoff + subscription re-establishment, serial pump into the handler |
 | `crates/rushwind-storage` | storage contracts: `Repository` trait, three paging strategies (Page/Offset/Token), filter tree, five-level viewer tenancy, field mask, audit hook |
 | `crates/rushwind-storage-memory` | in-memory reference engine: the semantic baseline for filters/sorting/cursors, zero dependencies |
-| `crates/rushwind-storage-seaorm` | SeaORM engine: dynamic SQL translation (sea_query Condition), real-transaction batch writes, SQLite passes the suite |
+| `crates/rushwind-storage-seaorm` | SeaORM engine: SQLite/PostgreSQL/MySQL all enabled, per-dialect SQL pinned by snapshot tests, SQLite passes the suite, live suites run in CI containers |
 | `crates/rushwind-storage-cache` | cache-aside decorator: singleflight miss-coalescing, scope-aware cache keys, generation-guarded invalidation |
 | `crates/rushwind-storage-proto` | the proto-defined wire contract: generated from `proto/rushwind/storage/v1/query.proto` (prost + pbjson), 29-operator mapping + AIP text parsing |
+| `crates/rushwind-storage-mongodb` | MongoDB engine: FilterExpr→BSON translation unit-tested offline, LIKE family compiled to escaped regex, live suite in CI containers |
 | `crates/rushwind-testkit` | cross-adapter conformance suites — every transport and engine must pass them in full |
 | `examples/multi-server` | two-server lifecycle demo (cascade, phase ordering) |
 | `examples/axum-admin` | axum adapter demo: health route + signal-driven graceful shutdown |

@@ -127,7 +127,15 @@ go-crud 的两个精髓在此落地。其一，**查询语法的操作符分类�
 
 枚举值的 protojson 形式是 proto 成员名（`"IS_NULL"`，不是驼峰）；FieldMask 用 go-crud 自己的 `{"paths":[...]}` 消息，而非 well-known 类型的逗号串。
 
-引擎适配器只有两个：`rushwind-storage-memory`（语义基准 + 零驱动即时可用）与 `rushwind-storage-seaorm`（sea_orm 连接池/事务 + sea_query 动态拼句，SQLite 过套件；无需生成实体，Schema 即唯一事实来源）。内存引擎的存在不是多余的第二个样例——它让「同一过滤器树、两种引擎、逐行一致」成为套件可执行的断言，而非文档承诺。
+引擎矩阵按「SQL 全家 + 文档库」铺开：
+
+| 引擎 crate | 后端 | 离线验证 | live 套件 |
+|:---|:---|:---|:---|
+| `rushwind-storage-memory` | 进程内 | 27 例套件 + 语义基准 | — |
+| `rushwind-storage-seaorm` | **SQLite / PostgreSQL / MySQL**（三后端同启） | 27 例套件（SQLite 内存库）+ 8 例三方言 SQL 快照 | CI service 容器（`--features live`，`STORAGE_DATABASE_URL`） |
+| `rushwind-storage-mongodb` | **MongoDB**（官方驱动） | 翻译层 7 例（FilterExpr→BSON，离线）+ LIKE→正则转义钉死 | CI service 容器（`--features live`，`MONGODB_URI`） |
+
+SQL 三方言的语句渲染由快照测试逐字钉死（占位符风格 `$n` vs `?`、LIMIT/OFFSET 绑定、ILIKE 折叠），live 容器套件验证的是连接、事务与真实服务器的方言行为——两层互相兜底。MongoDB 的 `LIKE` 族编译为转义加锚定的正则（SQL 通配符语义），元字符绝不逃逸成通配；生成主键用 `max(pk)+1`（文档库没有 rowid 别名），`batch_create` 的严格原子性需要副本集事务，单机部署下是单命令尽力语义——两处都在引擎文档里言明。内存引擎的存在不是多余的样例——它让「同一过滤器树、多引擎、逐行一致」成为套件可执行的断言，而非文档承诺。
 
 横切层以装饰器表达：`rushwind-storage-cache` 把 go-crud 的 Cache-Aside + SingleFlight 包成任意 `Repository` 之上的透明层。两条租户攸关的设计决策——**缓存键含 viewer 作用域**（`own(1)` 与 `own(2)` 永不共享条目，缓存无法跨租户泄漏），以及**失效即递增 per-key generation**（写事务落地前已出发的加载不得用旧行回填缓存）——各有一条行为测试钉死；装饰器本身还须整套通过 27 例一致性套件，证明其透明性。
 

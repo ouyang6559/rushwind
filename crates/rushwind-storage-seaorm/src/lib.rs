@@ -10,9 +10,10 @@
 //! groups become nested `AND`/`OR`); the three paging strategies translate
 //! to `LIMIT/OFFSET` or an id-greater-than cursor; viewer scopes conjoin an
 //! extra predicate or short-circuit to empty. Batch writes run inside a
-//! real transaction. SQLite is the conformance-tested backend, but the
-//! statement building is backend-agnostic (MySQL/PostgreSQL builders ship
-//! in the same dependency).
+//! real transaction. All three SQL backends ship enabled — SQLite (the
+//! conformance-tested, embedded flavor), PostgreSQL and MySQL (`SeaRepo::connect`);
+//! the per-dialect statement rendering is pinned by snapshot tests, and the
+//! live suites run against service containers in CI.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -67,6 +68,17 @@ buildable!(
 );
 
 // DDL statements build to plain SQL, without bind values.
+impl Buildable for sea_orm::sea_query::TableDropStatement {
+    fn build_for(&self, backend: DbBackend) -> (String, Values) {
+        let sql = match backend {
+            DbBackend::MySql => self.build(MysqlQueryBuilder),
+            DbBackend::Postgres => self.build(PostgresQueryBuilder),
+            _ => self.build(SqliteQueryBuilder),
+        };
+        (sql, Values(Vec::new()))
+    }
+}
+
 impl Buildable for TableCreateStatement {
     fn build_for(&self, backend: DbBackend) -> (String, Values) {
         let sql = match backend {
@@ -94,6 +106,30 @@ impl SeaRepo {
             .await
             .map_err(|e| StorageError::Backend(e.to_string()))?;
         Ok(Self::new(db, schema))
+    }
+
+    /// Connects to any backend SeaORM speaks — `postgres://…`, `mysql://…`,
+    /// `sqlite://…` — and binds a repository to it. This is the production
+    /// entry point; [`SeaRepo::sqlite_memory`] is the embedded/test flavor.
+    pub async fn connect(url: impl Into<String>, schema: Schema) -> Result<Self, StorageError> {
+        let db = Database::connect(ConnectOptions::new(url.into()))
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        Ok(Self::new(db, schema))
+    }
+
+    /// Drops the table if it exists — the inverse of [`SeaRepo::migrate_create`],
+    /// used by live-suite setups to guarantee a clean slate.
+    pub async fn migrate_drop(&self) -> Result<(), StorageError> {
+        let drop = sea_orm::sea_query::Table::drop()
+            .table(Alias::new(&self.schema.table))
+            .if_exists()
+            .to_owned();
+        self.db
+            .execute_raw(self.statement(&drop))
+            .await
+            .map_err(|e| self.map_err(e))?;
+        Ok(())
     }
 
     /// Creates the table if it does not exist yet — the DDL counterpart of

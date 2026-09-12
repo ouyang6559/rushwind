@@ -27,7 +27,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | P0 | コア・ライフサイクル、トランスポート契約、適合性スイート |
 | P1 | `rushwind-transport-axum`（管理/API 面）、`rushwind-transport-ws`（セッションミドルウェアチェーン：ゲート + アドミッション + セッションシャットダウンバス、[session-middleware.md](./docs/session-middleware.md) 参照） |
 | P2 | `rushwind-transport-quic`（素の QUIC セッション + フルセッションチェーン：ゲート/refuse、原子アドミッション、ハンドシェイク期限——提供済み；h3/webtransport は後から積み上げ）；`rushwind-transport-mqtt`（外部ブローカー消費ブリッジ）、登録のみのレジストリ薄片 ← 現在 |
-| storage | `rushwind-storage`（契約）+ `rushwind-storage-memory` / `rushwind-storage-seaorm` の 2 エンジン、いずれも適合性スイート合格；`rushwind-storage-cache`（Cache-Aside + singleflight）；`rushwind-storage-proto`（proto 定義契約 + protojson + AIP テキスト構文）；[go-crud](https://github.com/tx7do/go-crud) の対位 |
+| storage | `rushwind-storage`（契約）+ 4 エンジン：インメモリ参照、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB、いずれもスイート合格か同等のオフライン検証済み；`rushwind-storage-cache`（Cache-Aside + singleflight）；`rushwind-storage-proto`（proto 定義契約 + protojson + AIP テキスト構文）；[go-crud](https://github.com/tx7do/go-crud) の対位 |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
 ## レイアウト
@@ -41,9 +41,10 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-transport-quic` | QUIC アダプター：quinn 受け入れループをライフサイクルに接続、フルセッションチェーン；`stop()` は実釈放（Endpoint::close） |
 | `crates/rushwind-storage` | ストレージ契約：`Repository` trait、3 種のページング（Page/Offset/Token）、フィルターツリー、5 段階 Viewer テナンシー、FieldMask、監査フック |
 | `crates/rushwind-storage-memory` | インメモリ参照エンジン：フィルター/ソート/カーソルの意味論的基準、依存ゼロ |
-| `crates/rushwind-storage-seaorm` | SeaORM エンジン：動的 SQL 翻訳（sea_query Condition）、実トランザクション一括書き込み、SQLite がスイート合格 |
+| `crates/rushwind-storage-seaorm` | SeaORM エンジン：SQLite/PostgreSQL/MySQL の 3 バックエンド同梱、方言ごとの SQL はスナップショットで固定、SQLite がスイート合格、live スイートは CI コンテナで実行 |
 | `crates/rushwind-storage-cache` | Cache-Aside デコレーター：singleflight ミス統合、スコープ込みキャッシュキー、generation 保護付き無効化 |
 | `crates/rushwind-storage-proto` | proto 契約のワイヤ形式：`proto/rushwind/storage/v1/query.proto` から生成（prost + pbjson）、29 操作子マッピング + AIP テキスト構文 |
+| `crates/rushwind-storage-mongodb` | MongoDB エンジン：FilterExpr→BSON 翻訳はオフライン単体テスト済み、LIKE 族はエスケープ正規表現にコンパイル、live スイートは CI コンテナで実行 |
 | `crates/rushwind-testkit` | クロスアダプター適合性スイート——すべてのトランスポート/エンジンが全項目に合格する必要がある |
 | `examples/multi-server` | 2 サーバーのライフサイクル・デモ（カスケード、フェーズ順序） |
 | `examples/axum-admin` | axum アダプター・デモ：ヘルスルート + シグナル駆動のグレースフルシャットダウン |
