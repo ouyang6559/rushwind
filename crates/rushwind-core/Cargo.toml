@@ -1,0 +1,19 @@
+[package]
+name = "rushwind-core"
+description = "RushWind application lifecycle orchestration: concurrent server start, cascading shutdown, bounded teardown phases."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+tokio = { workspace = true, features = ["signal", "sync", "time"] }
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

@@ -1,0 +1,38 @@
+# Per-crate release automation (release-plz).
+#
+# DISABLED until crates.io publishing begins. When the first crate is ready
+# to publish:
+#   1. Verify each crate's Cargo.toml carries publish metadata
+#      (description, license, repository — already inherited from
+#      [workspace.package]).
+#   2. Review the release-plz action version and configuration below.
+#   3. Switch the trigger from `workflow_dispatch` to `push: branches: [main]`.
+#
+# Releases are per-crate and independently semver'd: the contract crates
+# (rushwind-transport) may stabilize at 1.x while adapters remain 0.x.
+# Examples are `publish = false` and never released.
+
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-plz:
+    if: false # remove when publishing begins
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: release-plz
+        uses: MarcoIeni/release-plz-action@v0.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

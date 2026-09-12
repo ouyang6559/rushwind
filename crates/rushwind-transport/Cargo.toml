@@ -1,0 +1,16 @@
+[package]
+name = "rushwind-transport"
+description = "RushWind transport contracts: server lifecycle trait, shutdown signalling, service instance model."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# CancellationToken (stop-signal implementation) is exported ungated as of
+# tokio-util 0.7.19; the former "sync" feature no longer exists.
+tokio-util = { workspace = true }

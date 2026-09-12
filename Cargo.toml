@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "examples/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.81"
+license = "MIT"
+repository = "https://github.com/tx7do/rushwind"
+
+[workspace.dependencies]
+tokio = "1"
+futures = "0.3"
+tokio-util = "0.7"
+rushwind-transport = { path = "crates/rushwind-transport", version = "0.0.1" }
+rushwind-core = { path = "crates/rushwind-core", version = "0.0.1" }
+
+# Workspace-wide lint policy: RushWind crates contain no unsafe code, period.
+[workspace.lints.rust]
+unsafe_code = "forbid"
