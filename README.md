@@ -27,7 +27,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | P0 | 生命周期核心、传输契约、一致性套件 |
 | P1 | `rushwind-transport-axum`（管理面/API）、`rushwind-transport-ws`（会话中间件链：门链 + 准入策略 + 会话停机总线，见 [session-middleware.md](./docs/session-middleware.md)） |
 | P2 | `rushwind-transport-quic`（裸 QUIC 会话 + 全套会话链：门/refuse、原子准入、握手截止）；`rushwind-transport-mqtt`（外部 broker 消费桥）；注册-only registry 薄片（`rushwind-registry` + etcd 适配器，线格式与 go-wind 字节对齐）——全部已交付 |
-| storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB，均过一致性套件或等价离线验证；`rushwind-storage-cache`（Cache-Aside + SingleFlight）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
+| storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横切层 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明装饰器）；算法积木 `rushwind-storage-tree`（树形遍历）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；`rushwind-storage-macros`（DTO 映射 derive）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
 | P3 | `rushwind-bootstrap`（serde 配置驱动装配）← 当前 |
 
 ## 仓库布局
@@ -48,6 +48,10 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-storage-cache` | Cache-Aside 装饰器：SingleFlight 合并击穿、缓存键含 viewer 作用域、generation 防陈旧回填 |
 | `crates/rushwind-storage-proto` | proto 契约线格式：`proto/rushwind/storage/v1/query.proto` 生成（prost + pbjson），29 操作符映射 + AIP 文本解析 |
 | `crates/rushwind-storage-mongodb` | MongoDB 引擎：FilterExpr→BSON 翻译离线单测，LIKE 族编译为转义正则，live 套件跑 CI 容器 |
+| `crates/rushwind-storage-soft-delete` | 软删除装饰器：墓碑写入、全读路径过滤、restore/purge，引擎无关 |
+| `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive 宏：DTO↔Record 映射编译期生成（对位 go-utils/mapper） |
+| `crates/rushwind-storage-tree` | 树形查询：children/roots/ancestors/subtree，契约级遍历 + 环检测，任意引擎可用 |
+| `crates/rushwind-storage-observe` | 观测装饰器：每调用一个 `tracing` span（table/op/outcome），OTel 导出交由 subscriber 选型 |
 | `crates/rushwind-testkit` | 跨适配器一致性测试套件——任何传输/引擎必须整套通过 |
 | `examples/multi-server` | 双服务器生命周期演示（级联停机、阶段顺序） |
 | `examples/axum-admin` | axum 适配器演示：健康路由 + 信号驱动的优雅停机 |

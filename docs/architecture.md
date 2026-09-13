@@ -139,6 +139,12 @@ SQL 三方言的语句渲染由快照测试逐字钉死（占位符风格 `$n` v
 
 横切层以装饰器表达：`rushwind-storage-cache` 把 go-crud 的 Cache-Aside + SingleFlight 包成任意 `Repository` 之上的透明层。两条租户攸关的设计决策——**缓存键含 viewer 作用域**（`own(1)` 与 `own(2)` 永不共享条目，缓存无法跨租户泄漏），以及**失效即递增 per-key generation**（写事务落地前已出发的加载不得用旧行回填缓存）——各有一条行为测试钉死；装饰器本身还须整套通过 27 例一致性套件，证明其透明性。
 
+同一手法延伸到软删除：`rushwind-storage-soft-delete` 把 go-crud GORM 模块的软删语义做成引擎无关的装饰器——表声明一个 `deleted_at` 整数列，`delete` 变为墓碑写入，所有读路径（get/list/count/update 目标）过滤墓碑，`restore`/`purge`/`list_deleted` 显式 opting out；`upsert` 写入可见世界（墓碑 id 以新数据复活）。审计话语权归装饰器：delete 审计为 `Delete`（尽管底层是 `Update`），落库写走无审计 sink 的静默上下文。装饰器本身过全套 27 例透明性套件 + 9 例行为测试。
+
+DTO↔Entity 映射（对位 go-utils/mapper）落在 `rushwind-storage-macros`：契约 crate 定义 `ToRecord`/`FromRecord` 一对 trait，derive 宏为受支持的标量模型（`String`/`i64`/`f64`/`bool` 及其 `Option`）生成实现——`None` ↔ `NULL`，缺失或错型字段即 `InvalidQuery`。Go 那边靠反射的映射，这里在编译期完成。
+
+最后两块积木各归其位。树形查询（对位 go-crud Ent 的 tree）不进契约、也不进引擎——`rushwind-storage-tree` 把整棵树的词汇表（`children`/`roots`/`ancestors`/`subtree`/`is_ancestor`）表达为契约级查询的组合：约定一个 `parent_id` 整数列，children/roots 是过滤列表，subtree 是逐层广度扫描，环损坏报 `InvalidQuery` 而非死循环，悬空父 id 如根截止。代价是深子树每层一次 list——SQL 引擎日后可用递归 CTE 出专用快路径，而任何引擎（含装饰器栈）第一天就能用。可观测性同理不绑栈：`rushwind-storage-observe` 只发 `tracing` span（`rushwind.storage`，带 `table`/`op`/`outcome`），导出到 OpenTelemetry 是 subscriber 侧（tracing-opentelemetry）的选型——观测栈是用户的底板，RushWind 只递积木。
+
 ## 与 go-wind 的语义差异
 
 | Go（go-wind） | Rust（RushWind） | 理由 |

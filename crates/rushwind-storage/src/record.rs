@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::error::StorageError;
 use crate::value::Value;
 
 /// One row, keyed by column name.
@@ -68,6 +69,21 @@ impl Record {
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
         self.0.iter().map(|(k, v)| (k.as_str(), v))
     }
+}
+
+/// Structs that convert themselves into a [`Record`] — the write face of
+/// the mapper pair (the derive macro in `rushwind-storage-macros`
+/// implements this).
+pub trait ToRecord {
+    /// The record view of `self`.
+    fn to_record(&self) -> Record;
+}
+
+/// Structs constructible from a [`Record`] — the read face of the mapper
+/// pair. Unknown or wrongly-typed fields are [`StorageError::InvalidQuery`].
+pub trait FromRecord: Sized {
+    /// Builds `Self` from a record view.
+    fn from_record(record: &Record) -> Result<Self, StorageError>;
 }
 
 impl FromIterator<(String, Value)> for Record {

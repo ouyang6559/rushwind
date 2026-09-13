@@ -373,6 +373,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootstrap-demo"
+version = "0.0.1"
+dependencies = [
+ "axum 0.8.9",
+ "rushwind-bootstrap",
+ "rushwind-storage",
+ "rushwind-storage-memory",
+ "rushwind-transport",
+ "tokio",
+]
+
+[[package]]
 name = "bson"
 version = "2.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3021,6 +3033,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-bootstrap"
+version = "0.0.1"
+dependencies = [
+ "axum 0.8.9",
+ "rushwind-core",
+ "rushwind-storage",
+ "rushwind-storage-memory",
+ "rushwind-transport",
+ "rushwind-transport-axum",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-core"
 version = "0.0.1"
 dependencies = [
@@ -3063,6 +3091,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-storage-macros"
+version = "0.0.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rushwind-storage",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "rushwind-storage-memory"
 version = "0.0.1"
 dependencies = [
@@ -3079,6 +3117,19 @@ dependencies = [
  "rushwind-storage",
  "rushwind-testkit",
  "tokio",
+]
+
+[[package]]
+name = "rushwind-storage-observe"
+version = "0.0.1"
+dependencies = [
+ "futures",
+ "rushwind-storage",
+ "rushwind-storage-memory",
+ "rushwind-testkit",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3106,6 +3157,26 @@ dependencies = [
  "rushwind-storage",
  "rushwind-testkit",
  "sea-orm",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-storage-soft-delete"
+version = "0.0.1"
+dependencies = [
+ "rushwind-storage",
+ "rushwind-storage-memory",
+ "rushwind-testkit",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-storage-tree"
+version = "0.0.1"
+dependencies = [
+ "rushwind-storage",
+ "rushwind-storage-memory",
+ "rushwind-testkit",
  "tokio",
 ]
 
@@ -3522,6 +3593,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -4460,6 +4544,12 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"

@@ -383,7 +383,13 @@ impl SeaRepo {
         let total = self.count_matching(&table, &where_clause).await?;
 
         let cols = self.select_columns(&query.mask);
-        let select = list_select(&self.schema.table, &pk, &cols, where_clause.as_ref(), query)?;
+        let select = list_select(
+            &self.schema,
+            &cols,
+            where_clause.as_ref(),
+            query,
+            self.backend(),
+        )?;
 
         let rows = self
             .db
@@ -808,18 +814,39 @@ fn create_table_statement(schema: &Schema) -> TableCreateStatement {
     create
 }
 
+/// Text columns order by byte value (the contract's pinned collation);
+/// locale-collating backends get an explicit binary COLLATE so the suite's
+/// ordering expectations hold verbatim on PostgreSQL and MySQL.
+fn order_expr(field: &str, kind: ColumnKind, backend: DbBackend) -> Expr {
+    if kind != ColumnKind::Text {
+        return Expr::col(Alias::new(field));
+    }
+    match backend {
+        DbBackend::MySql => Expr::cust(format!("`{field}` COLLATE utf8mb4_bin")),
+        DbBackend::Postgres => Expr::cust(format!("\"{field}\" COLLATE \"C\"")),
+        _ => Expr::col(Alias::new(field)),
+    }
+}
+
 /// The page-of-rows SELECT for a list query: projection, WHERE, ordering
 /// (primary key ascending by default), and the paging clause — token paging
 /// continues after the cursor with a one-row peek.
 fn list_select(
-    table: &str,
-    pk: &str,
+    schema: &Schema,
     cols: &[String],
     where_clause: Option<&Condition>,
     query: &ListQuery,
+    backend: DbBackend,
 ) -> Result<SelectStatement, StorageError> {
+    let pk = schema.primary_key.as_str();
+    let kind_of = |field: &str| {
+        schema
+            .column(field)
+            .map(|column| column.kind)
+            .unwrap_or(ColumnKind::Text)
+    };
     let mut select = Query::select();
-    select.from(Alias::new(table));
+    select.from(Alias::new(schema.table.as_str()));
     for col in cols {
         select.column(Alias::new(col));
     }
@@ -827,14 +854,17 @@ fn list_select(
         select.cond_where(cond.clone());
     }
     if query.sort.is_default() {
-        select.order_by(Alias::new(pk), Order::Asc);
+        select.order_by_expr(order_expr(pk, ColumnKind::Int, backend), Order::Asc);
     } else {
         for term in &query.sort.fields {
             let order = match term.dir {
                 SortDir::Asc => Order::Asc,
                 SortDir::Desc => Order::Desc,
             };
-            select.order_by(Alias::new(&term.field), order);
+            select.order_by_expr(
+                order_expr(&term.field, kind_of(&term.field), backend),
+                order,
+            );
         }
     }
     let limit = query.paging.limit();
@@ -922,11 +952,11 @@ mod sql_snapshots {
             FilterExpr::cond("score", Op::IsNull, []),
         ]);
         let select = list_select(
-            "widgets",
-            "id",
+            &schema(),
             &["id".into(), "name".into()],
             Some(&translate(filter.node()).expect("translates")),
             &ListQuery::page(2, 10),
+            DbBackend::Sqlite,
         )
         .expect("builds");
 
@@ -957,17 +987,47 @@ mod sql_snapshots {
     fn ilike_lowers_the_column() {
         let filter = FilterExpr::cond("name", Op::Ilike, [Value::Text("%E%".into())]);
         let select = list_select(
-            "widgets",
-            "id",
+            &schema(),
             &["id".into()],
             Some(&translate(filter.node()).expect("translates")),
             &ListQuery::default(),
+            DbBackend::Sqlite,
         )
         .expect("builds");
         let (sqlite, _) = render(&select, DbBackend::Sqlite);
         assert_eq!(
             sqlite,
             r#"SELECT "id" FROM "widgets" WHERE LOWER("name") LIKE ? ORDER BY "id" ASC LIMIT ? OFFSET ?"#
+        );
+    }
+
+    #[test]
+    fn text_sorts_force_binary_collation_on_locale_backends() {
+        let query = ListQuery {
+            paging: Paging::Offset {
+                offset: 0,
+                limit: 9,
+            },
+            sort: Sort::by("name", SortDir::Asc),
+            ..ListQuery::default()
+        };
+        let build = |backend| {
+            list_select(&schema(), &["id".into()], None, &query, backend).expect("builds")
+        };
+        let (sqlite, _) = render(&build(DbBackend::Sqlite), DbBackend::Sqlite);
+        assert_eq!(
+            sqlite,
+            r#"SELECT "id" FROM "widgets" ORDER BY "name" ASC LIMIT ? OFFSET ?"#
+        );
+        let (mysql, _) = render(&build(DbBackend::MySql), DbBackend::MySql);
+        assert_eq!(
+            mysql,
+            "SELECT `id` FROM `widgets` ORDER BY `name` COLLATE utf8mb4_bin ASC LIMIT ? OFFSET ?"
+        );
+        let (postgres, _) = render(&build(DbBackend::Postgres), DbBackend::Postgres);
+        assert_eq!(
+            postgres,
+            "SELECT \"id\" FROM \"widgets\" ORDER BY \"name\" COLLATE \"C\" ASC LIMIT $1 OFFSET $2"
         );
     }
 
@@ -982,11 +1042,11 @@ mod sql_snapshots {
             FilterExpr::cond("age", Op::Between, [Value::Int(5), Value::Int(25)]),
         ]);
         let select = list_select(
-            "widgets",
-            "id",
+            &schema(),
             &["id".into()],
             Some(&translate(filter.node()).expect("translates")),
             &ListQuery::default(),
+            DbBackend::Sqlite,
         )
         .expect("builds");
         let (sqlite, binds) = render(&select, DbBackend::Sqlite);
@@ -1007,7 +1067,8 @@ mod sql_snapshots {
             },
             ..ListQuery::default()
         };
-        let select = list_select("widgets", "id", &["id".into()], None, &query).expect("builds");
+        let select = list_select(&schema(), &["id".into()], None, &query, DbBackend::Sqlite)
+            .expect("builds");
         let (sqlite, binds) = render(&select, DbBackend::Sqlite);
         assert_eq!(
             sqlite,
@@ -1019,8 +1080,7 @@ mod sql_snapshots {
     #[test]
     fn default_sort_is_primary_key_ascending() {
         let select = list_select(
-            "widgets",
-            "id",
+            &schema(),
             &["id".into()],
             None,
             &ListQuery {
@@ -1030,6 +1090,7 @@ mod sql_snapshots {
                 },
                 ..ListQuery::default()
             },
+            DbBackend::Sqlite,
         )
         .expect("builds");
         let (sqlite, _) = render(&select, DbBackend::Sqlite);
@@ -1049,7 +1110,8 @@ mod sql_snapshots {
             sort: Sort::by("unit_id", SortDir::Asc).then("age", SortDir::Desc),
             ..ListQuery::default()
         };
-        let select = list_select("widgets", "id", &["id".into()], None, &query).expect("builds");
+        let select = list_select(&schema(), &["id".into()], None, &query, DbBackend::Sqlite)
+            .expect("builds");
         let (sqlite, _) = render(&select, DbBackend::Sqlite);
         assert_eq!(
             sqlite,
@@ -1066,7 +1128,7 @@ mod sql_snapshots {
             },
             ..ListQuery::default()
         };
-        let err = list_select("widgets", "id", &["id".into()], None, &query)
+        let err = list_select(&schema(), &["id".into()], None, &query, DbBackend::Sqlite)
             .expect_err("garbage cursor must fail");
         assert!(matches!(err, StorageError::InvalidQuery(_)));
     }

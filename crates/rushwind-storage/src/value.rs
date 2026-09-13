@@ -89,6 +89,22 @@ impl Value {
             _ => None,
         }
     }
+
+    /// Extracts the float payload, if this is [`Value::Real`].
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Value::Real(f) => Some(*f),
+            _ => None,
+        }
+    }
+
+    /// Extracts the boolean payload, if this is [`Value::Bool`].
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
 }
 
 impl From<bool> for Value {

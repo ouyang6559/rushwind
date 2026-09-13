@@ -1,0 +1,23 @@
+[package]
+name = "rushwind-storage-macros"
+description = "Derive macros for the RushWind storage mapper pair: ToRecord / FromRecord over plain structs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+proc-macro = true
+
+[lints]
+workspace = true
+
+[dependencies]
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
+
+[dev-dependencies]
+rushwind-storage = { workspace = true }

@@ -60,7 +60,7 @@ pub use error::StorageError;
 pub use field_mask::FieldMask;
 pub use filter::{Condition, FilterExpr, FilterNode, Op};
 pub use paging::{decode_cursor, encode_cursor, Page, Paging, MAX_LIMIT};
-pub use record::Record;
+pub use record::{FromRecord, Record, ToRecord};
 pub use repository::{ListQuery, RepoFuture, Repository};
 pub use schema::{Column, ColumnKind, Schema};
 pub use sorting::{Sort, SortDir, SortField};

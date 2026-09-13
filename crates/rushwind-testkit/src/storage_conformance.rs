@@ -721,7 +721,11 @@ macro_rules! rushwind_storage_conformance_suite {
                     }
                 }
                 let plain = repo.list(ctx(), &query()).await.expect("list succeeds");
-                assert_eq!(plain.items[0].len(), 6, "unmasked rows carry every column");
+                assert_eq!(
+                    plain.items[0].len(),
+                    repo.schema().columns.len(),
+                    "unmasked rows carry every declared column"
+                );
             }
 
             // ---- viewer tenancy -------------------------------------------------
