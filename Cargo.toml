@@ -34,6 +34,7 @@ rushwind-broker-mqtt = { path = "crates/rushwind-broker-mqtt", version = "0.0.1"
 rushwind-broker-redis = { path = "crates/rushwind-broker-redis", version = "0.0.1" }
 rushwind-cache = { path = "crates/rushwind-cache", version = "0.0.1" }
 rushwind-cache-redis = { path = "crates/rushwind-cache-redis", version = "0.0.1" }
+rushwind-health = { path = "crates/rushwind-health", version = "0.0.1" }
 rushwind-broker-nats = { path = "crates/rushwind-broker-nats", version = "0.0.1" }
 rushwind-broker-rabbitmq = { path = "crates/rushwind-broker-rabbitmq", version = "0.0.1" }
 rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.1" }
@@ -108,8 +109,9 @@ sea-orm = { version = "2.0", default-features = false, features = [
 # The apalis task-queue storage traits: the Postgres backend implements
 # `Storage` + `Backend` from this crate. The `apalis` facade (worker
 # runtime, Monitor) is left to consumers of the storage, not the storage
-# itself.
-apalis-core = "0.7"
+# itself. `json` brings the JsonCodec the storage persists with; `sleep`
+# brings the interval stream the heartbeat loop polls on.
+apalis-core = { version = "0.7", features = ["json", "sleep"] }
 # Timestamps for run_at/lock_at columns: chrono, matching sqlx's chrono
 # support for TIMESTAMPTZ.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }

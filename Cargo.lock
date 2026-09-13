@@ -174,8 +174,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3948d2051795c769e6a44a46549879af39d5e8e4fb113e0011cf99f7cd21b657"
 dependencies = [
  "futures",
+ "futures-timer",
  "pin-project-lite",
  "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "tower",
  "ulid",
@@ -1839,6 +1841,12 @@ name = "futures-task"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
+
+[[package]]
+name = "futures-timer"
+version = "3.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af43fadb8a98512d547e37b4e92e0ced13e205c061b87b4623eff01d918d6968"
 
 [[package]]
 name = "futures-util"
@@ -4776,6 +4784,18 @@ version = "0.0.1"
 dependencies = [
  "futures",
  "rushwind-transport",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-health"
+version = "0.0.1"
+dependencies = [
+ "axum 0.8.9",
+ "reqwest",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

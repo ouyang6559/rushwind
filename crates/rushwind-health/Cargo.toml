@@ -1,0 +1,22 @@
+[package]
+name = "rushwind-health"
+description = "Health-check contract for RushWind: Status/Result/Checker, an aggregator with per-check timeouts, TCP and HTTP checkers, and an axum handler."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+axum = { version = "0.8", default-features = false, features = ["json"] }
+reqwest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros", "net"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time", "net"] }
