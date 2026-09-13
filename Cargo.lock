@@ -3043,6 +3043,7 @@ dependencies = [
  "axum 0.8.9",
  "rushwind-core",
  "rushwind-storage",
+ "rushwind-storage-axum",
  "rushwind-storage-memory",
  "rushwind-transport",
  "rushwind-transport-axum",
@@ -3797,6 +3798,7 @@ dependencies = [
  "log",
  "memchr",
  "percent-encoding",
+ "rustls",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3806,6 +3808,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
+ "webpki-roots",
 ]
 
 [[package]]

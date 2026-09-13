@@ -136,7 +136,7 @@ impl SeaRepo {
     /// the [`Schema`], for embedded and test setups. Production deployments
     /// usually own their migrations instead.
     pub async fn migrate_create(&self) -> Result<(), StorageError> {
-        let create = create_table_statement(&self.schema);
+        let create = create_table_statement(&self.schema, self.backend());
         self.db
             .execute_raw(self.statement(&create))
             .await
@@ -481,15 +481,54 @@ impl SeaRepo {
             .columns(columns)
             .values(values)
             .map_err(|e| StorageError::InvalidQuery(e.to_string()))?;
-        let exec = conn
-            .execute_raw(self.statement(&insert))
-            .await
-            .map_err(|e| self.map_err(e))?;
-        Ok(match explicit {
-            Some(id) => id,
-            None => i64::try_from(exec.last_insert_id())
-                .map_err(|_| StorageError::Backend("generated primary key out of range".into()))?,
-        })
+        if let Some(explicit_id) = explicit {
+            // The payload carries its own primary key; plain insert.
+            conn.execute_raw(self.statement(&insert))
+                .await
+                .map_err(|e| self.map_err(e))?;
+            return Ok(explicit_id);
+        }
+        let backend = self.backend();
+        if backend == DbBackend::MySql {
+            // MySQL has no RETURNING; the last generated id lives on the
+            // connection's session state.
+            let exec = conn
+                .execute_raw(self.statement(&insert))
+                .await
+                .map_err(|e| self.map_err(e))?;
+            Ok(i64::try_from(exec.last_insert_id())
+                .map_err(|_| StorageError::Backend("generated primary key out of range".into()))?)
+        } else {
+            // PostgreSQL and SQLite (>= 3.35) render RETURNING.
+            insert.returning_col(Alias::new(pk.as_str()));
+            let row = conn
+                .query_one_raw(self.statement(&insert))
+                .await
+                .map_err(|e| self.map_err(e))?;
+            // PG identity columns decode strictly as INT4 (i32); SQLite
+            // rowid RETURNING is INT8 (i64). Try both widths by name —
+            // sqlx's decoders reject the wrong width outright, so a failed
+            // narrow read falls back to the wide one and vice versa.
+            let id = match row {
+                Some(row) => {
+                    let wide = row.try_get_by::<Option<i64>, _>(pk.as_str()).ok().flatten();
+                    let narrow = row
+                        .try_get_by::<Option<i32>, _>(pk.as_str())
+                        .ok()
+                        .flatten()
+                        .map(i64::from);
+                    narrow.or(wide).ok_or_else(|| {
+                        StorageError::Backend("INSERT RETURNING produced no primary key".into())
+                    })?
+                }
+                None => {
+                    return Err(StorageError::Backend(
+                        "INSERT RETURNING produced no primary key".into(),
+                    ))
+                }
+            };
+            Ok(id)
+        }
     }
 
     async fn create_async(&self, ctx: &QueryCtx, row: Record) -> Result<Record, StorageError> {
@@ -783,9 +822,12 @@ fn translate(node: &FilterNode) -> Result<Condition, StorageError> {
 
 // ---- pure statement builders (unit-tested against every dialect) ----------
 
-/// The DDL counterpart of a [`Schema`]: `CREATE TABLE IF NOT EXISTS` with a
-/// rowid-aliasing `INTEGER PRIMARY KEY` for SQLite.
-fn create_table_statement(schema: &Schema) -> TableCreateStatement {
+/// The DDL counterpart of a [`Schema`]: `CREATE TABLE IF NOT EXISTS` whose
+/// primary key carries a backend-native id generator — SQLite leans on the
+/// rowid alias, MySQL gets `AUTO_INCREMENT`, PostgreSQL gets an identity
+/// column. Generated ids come back via RETURNING (PG/SQLite) or
+/// `last_insert_id` (MySQL).
+fn create_table_statement(schema: &Schema, backend: DbBackend) -> TableCreateStatement {
     let mut create = Table::create();
     create.table(Alias::new(&schema.table)).if_not_exists();
     for column in &schema.columns {
@@ -808,6 +850,21 @@ fn create_table_statement(schema: &Schema) -> TableCreateStatement {
         }
         if column.name == schema.primary_key {
             def.primary_key();
+            match backend {
+                // sea-query's auto_increment renders nothing on PostgreSQL;
+                // spell both dialects out explicitly instead, with NOT NULL
+                // spelled too (SQLite is the exception: its rowid alias
+                // requires exactly `INTEGER PRIMARY KEY`).
+                DbBackend::MySql => {
+                    def.not_null();
+                    def.extra("AUTO_INCREMENT");
+                }
+                DbBackend::Postgres => {
+                    def.not_null();
+                    def.extra("GENERATED BY DEFAULT AS IDENTITY");
+                }
+                _ => {}
+            }
         }
         create.col(def);
     }
@@ -915,7 +972,15 @@ mod sql_snapshots {
 
     #[test]
     fn ddl_per_dialect() {
-        let create = create_table_statement(&schema());
+        let create = create_table_statement(&schema(), DbBackend::Sqlite);
+        let (mysql, _) = render(
+            &create_table_statement(&schema(), DbBackend::MySql),
+            DbBackend::MySql,
+        );
+        let (postgres, _) = render(
+            &create_table_statement(&schema(), DbBackend::Postgres),
+            DbBackend::Postgres,
+        );
         let (sqlite, _) = render(&create, DbBackend::Sqlite);
         assert!(
             sqlite.contains("CREATE TABLE IF NOT EXISTS \"widgets\""),
@@ -929,17 +994,24 @@ mod sql_snapshots {
             "sqlite pk must alias the rowid: {sqlite}"
         );
 
-        let (mysql, _) = render(&create, DbBackend::MySql);
         assert!(
             mysql.contains("CREATE TABLE IF NOT EXISTS `widgets`"),
             "{mysql}"
         );
+        assert!(
+            mysql.contains("`id` int NOT NULL PRIMARY KEY AUTO_INCREMENT"),
+            "mysql pk must generate ids: {mysql}"
+        );
         assert!(mysql.contains("`age` int"), "{mysql}");
 
-        let (postgres, _) = render(&create, DbBackend::Postgres);
         assert!(
             postgres.contains("CREATE TABLE IF NOT EXISTS \"widgets\""),
             "{postgres}"
+        );
+        assert!(
+            postgres
+                .contains("\"id\" integer NOT NULL PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY"),
+            "pg pk must be an identity column: {postgres}"
         );
         assert!(postgres.contains("\"age\" integer"), "{postgres}");
     }
