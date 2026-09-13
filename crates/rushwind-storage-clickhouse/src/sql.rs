@@ -65,11 +65,19 @@ fn column_type(kind: ColumnKind) -> &'static str {
 pub(crate) fn create_table_sql(schema: &Schema) -> String {
     let mut columns = Vec::with_capacity(schema.columns.len());
     for column in &schema.columns {
-        columns.push(format!(
-            "{} {}",
-            identifier(&column.name),
+        // The sorting key cannot be Nullable: the primary key column is
+        // declared bare (Int64 still matches the contract's i64 ids).
+        let kind = if column.name == schema.primary_key {
+            match column.kind {
+                ColumnKind::Bool => "UInt8",
+                ColumnKind::Int => "Int64",
+                ColumnKind::Real => "Float64",
+                ColumnKind::Text => "String",
+            }
+        } else {
             column_type(column.kind)
-        ));
+        };
+        columns.push(format!("{} {}", identifier(&column.name), kind));
     }
     format!(
         "CREATE TABLE IF NOT EXISTS {} ({}) ENGINE = MergeTree ORDER BY {}",
@@ -259,6 +267,20 @@ pub(crate) fn select_sql(
     query: &ListQuery,
 ) -> Result<String, StorageError> {
     let pk = schema.primary_key.as_str();
+
+    // Assemble the full WHERE up front: the caller's clause plus the token
+    // cursor (a primary-key range), since WHERE must precede ORDER BY.
+    let mut conditions: Vec<String> = Vec::new();
+    if let Some(where_clause) = where_clause {
+        conditions.push(where_clause.to_owned());
+    }
+    if let Paging::Token { token, .. } = &query.paging {
+        if !token.is_empty() {
+            let last = rushwind_storage::decode_cursor(token)?;
+            conditions.push(format!("{} > {}", identifier(pk), last));
+        }
+    }
+
     let mut sql = format!(
         "SELECT {} FROM {}",
         columns
@@ -268,9 +290,9 @@ pub(crate) fn select_sql(
             .join(", "),
         identifier(&schema.table)
     );
-    if let Some(where_clause) = where_clause {
+    if !conditions.is_empty() {
         sql.push_str(" WHERE ");
-        sql.push_str(where_clause);
+        sql.push_str(&conditions.join(" AND "));
     }
     if query.sort.is_default() {
         sql.push_str(&format!(" ORDER BY {} ASC", identifier(pk)));
@@ -292,24 +314,9 @@ pub(crate) fn select_sql(
     }
     let limit = query.paging.limit();
     match &query.paging {
-        Paging::Token { token, .. } => {
-            let mut conditions: Vec<String> = Vec::new();
-            if let Some(where_clause) = where_clause {
-                conditions.push(where_clause.to_owned());
-            }
-            if !token.is_empty() {
-                let last = rushwind_storage::decode_cursor(token)?;
-                conditions.push(format!(
-                    "{} > {}",
-                    identifier(pk),
-                    literal(&Value::Int(last))
-                ));
-            }
-            if !conditions.is_empty() {
-                sql.push_str(" WHERE ");
-                sql.push_str(&conditions.join(" AND "));
-            }
-            // Peek one row past the page to learn whether the stream continues.
+        // The cursor predicate was already folded into the WHERE clause;
+        // peek one row past the page to learn whether the stream continues.
+        Paging::Token { .. } => {
             sql.push_str(&format!(" LIMIT {}", limit as u64 + 1));
         }
         Paging::Page { page, .. } => {
@@ -361,7 +368,7 @@ mod tests {
         let sql = create_table_sql(&schema());
         assert_eq!(
             sql,
-            "CREATE TABLE IF NOT EXISTS `widgets` (`id` Nullable(Int64), `name` Nullable(String), \
+            "CREATE TABLE IF NOT EXISTS `widgets` (`id` Int64, `name` Nullable(String), \
              `age` Nullable(Int64), `score` Nullable(Float64)) ENGINE = MergeTree ORDER BY `id`"
         );
     }
@@ -451,7 +458,7 @@ mod tests {
         let cursor = select_sql(&schema, &["id".into()], None, &token).expect("builds");
         assert_eq!(
             cursor,
-            "SELECT `id` FROM `widgets` ORDER BY `id` ASC WHERE `id` > 42 LIMIT 4"
+            "SELECT `id` FROM `widgets` WHERE `id` > 42 ORDER BY `id` ASC LIMIT 4"
         );
     }
 }

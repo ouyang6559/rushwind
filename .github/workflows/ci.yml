@@ -144,6 +144,16 @@ jobs:
           INFLUXDB_URL: http://localhost:8086
           INFLUXDB_DB: rushwind
 
+      - name: Start ClickHouse
+        run: |
+          docker run -d --name clickhouse -p 8123:8123             -e CLICKHOUSE_USER=rushwind -e CLICKHOUSE_PASSWORD=rushwind             -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1             clickhouse/clickhouse-server:24.8
+          sleep 15
+
+      - name: ClickHouse suite
+        run: cargo test -p rushwind-storage-clickhouse --features live
+        env:
+          CLICKHOUSE_URL: http://rushwind:rushwind@localhost:8123
+
   registry-integration:
     name: registry conformance (live etcd)
     runs-on: ubuntu-latest
