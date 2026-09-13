@@ -50,6 +50,11 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-storage-cache` | Cache-Aside 装饰器：SingleFlight 合并击穿、缓存键含 viewer 作用域、generation 防陈旧回填 |
 | `crates/rushwind-storage-proto` | proto 契约线格式：`proto/rushwind/storage/v1/query.proto` 生成（prost + pbjson），29 操作符映射 + AIP 文本解析 |
 | `crates/rushwind-storage-mongodb` | MongoDB 引擎：FilterExpr→BSON 翻译离线单测，LIKE 族编译为转义正则，live 套件跑 CI 容器 |
+| `crates/rushwind-storage-elasticsearch` | Elasticsearch 引擎：REST + refresh-on-write，`.keyword` 精确匹配，bulk 原子批写 |
+| `crates/rushwind-storage-opensearch` | OpenSearch 引擎：ES 线格式薄复用（wire 兼容） |
+| `crates/rushwind-storage-cassandra` | Cassandra 引擎：bucket 固定分区 + 契约求值器过滤，LWT 原子批写 |
+| `crates/rushwind-storage-influxdb` | InfluxDB 引擎：measurement 即表，id 为 series tag，InfluxQL 删除 |
+| `crates/rushwind-storage-clickhouse` | ClickHouse 引擎：SQL over HTTP，mutations_sync 读己之写，探针式冲突检测 |
 | `crates/rushwind-storage-soft-delete` | 软删除装饰器：墓碑写入、全读路径过滤、restore/purge，引擎无关 |
 | `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive 宏：DTO↔Record 映射编译期生成（对位 go-utils/mapper） |
 | `crates/rushwind-storage-tree` | 树形查询：children/roots/ancestors/subtree，契约级遍历 + 环检测，任意引擎可用 |

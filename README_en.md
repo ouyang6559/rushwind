@@ -48,6 +48,11 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `crates/rushwind-storage-cache` | cache-aside decorator: singleflight miss-coalescing, scope-aware cache keys, generation-guarded invalidation |
 | `crates/rushwind-storage-proto` | the proto-defined wire contract: generated from `proto/rushwind/storage/v1/query.proto` (prost + pbjson), 29-operator mapping + AIP text parsing |
 | `crates/rushwind-storage-mongodb` | MongoDB engine: FilterExpr→BSON translation unit-tested offline, LIKE family compiled to escaped regex, live suite in CI containers |
+| `crates/rushwind-storage-elasticsearch` | Elasticsearch engine: REST with refresh-on-write, `.keyword` exact matching, atomic bulk with rollback |
+| `crates/rushwind-storage-opensearch` | OpenSearch engine: thin reuse of the ES wire shape (wire-compatible) |
+| `crates/rushwind-storage-cassandra` | Cassandra engine: bucket-fixed partition + contract-evaluator filtering, LWT atomic batches |
+| `crates/rushwind-storage-influxdb` | InfluxDB engine: measurement as table, id as series tag, InfluxQL deletes |
+| `crates/rushwind-storage-clickhouse` | ClickHouse engine: SQL over HTTP, mutations_sync for read-your-writes, probe-based conflict detection |
 | `crates/rushwind-storage-soft-delete` | soft-delete decorator: tombstone writes, filtered on every read path, restore/purge — engine-agnostic |
 | `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive macros: DTO↔Record mapping generated at compile time (the go-utils/mapper counterpart) |
 | `crates/rushwind-storage-tree` | tree queries: children/roots/ancestors/subtree as contract-level traversal with cycle guards, on any engine |

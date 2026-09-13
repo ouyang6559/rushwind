@@ -45,6 +45,11 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-storage-cache` | Cache-Aside デコレーター：singleflight ミス統合、スコープ込みキャッシュキー、generation 保護付き無効化 |
 | `crates/rushwind-storage-proto` | proto 契約のワイヤ形式：`proto/rushwind/storage/v1/query.proto` から生成（prost + pbjson）、29 操作子マッピング + AIP テキスト構文 |
 | `crates/rushwind-storage-mongodb` | MongoDB エンジン：FilterExpr→BSON 翻訳はオフライン単体テスト済み、LIKE 族はエスケープ正規表現にコンパイル、live スイートは CI コンテナで実行 |
+| `crates/rushwind-storage-elasticsearch` | Elasticsearch エンジン：REST + 書き込み時 refresh、`.keyword` 完全一致、bulk 原子性とロールバック |
+| `crates/rushwind-storage-opensearch` | OpenSearch エンジン：ES ワイヤ形式の薄い再利用（ワイヤ互換） |
+| `crates/rushwind-storage-cassandra` | Cassandra エンジン：bucket 固定パーティション + 契約評価器フィルタ、LWT 原子バッチ |
+| `crates/rushwind-storage-influxdb` | InfluxDB エンジン：measurement をテーブルとして、id は series タグ、InfluxQL 削除 |
+| `crates/rushwind-storage-clickhouse` | ClickHouse エンジン：HTTP 経由の SQL、mutations_sync で読み取り一貫性、プローブ型競合検出 |
 | `crates/rushwind-storage-soft-delete` | ソフト削除デコレーター：墓碑書き込み、全読み取り経路でフィルタ、restore/purge、エンジン非依存 |
 | `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive マクロ：DTO↔Record マッピングをコンパイル時に生成（go-utils/mapper の対位） |
 | `crates/rushwind-storage-tree` | 木構造クエリ：children/roots/ancestors/subtree を契約レベルの走査で＋循環検出、任意のエンジンで利用可 |
