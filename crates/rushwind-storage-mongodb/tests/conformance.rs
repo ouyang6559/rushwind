@@ -29,6 +29,15 @@ async fn fresh_repo() -> Arc<dyn Repository> {
     let repo = MongoRepo::connect(&uri, "rushwind_suite", schema)
         .await
         .expect("connects to MongoDB");
+    // A fresh collection per run: leftover documents from a previous
+    // execution would pollute the suite's count/ordering expectations.
+    repo.drop_collection()
+        .await
+        .expect("drops any stale collection");
+    // Conflict semantics and batch atomicity assume the production index.
+    repo.ensure_primary_index()
+        .await
+        .expect("creates the primary key index");
     Arc::new(repo)
 }
 

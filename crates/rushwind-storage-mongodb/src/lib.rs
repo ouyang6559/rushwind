@@ -57,6 +57,37 @@ impl MongoRepo {
         Ok(Self::new(collection, schema))
     }
 
+    /// Drops the backing collection — the inverse of a fresh deployment,
+    /// used by live-suite setups to guarantee a clean slate.
+    pub async fn drop_collection(&self) -> Result<(), StorageError> {
+        self.collection
+            .drop()
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))
+    }
+
+    /// Ensures the unique index on the primary key that production
+    /// deployments are expected to carry: without it MongoDB cannot reject
+    /// duplicate ids, and conflict semantics (plus `batch_create`
+    /// atomicity) do not hold. Idempotent.
+    pub async fn ensure_primary_index(&self) -> Result<(), StorageError> {
+        use mongodb::options::IndexOptions;
+        let model = mongodb::IndexModel::builder()
+            .keys(doc! { &self.schema.primary_key: 1i32 })
+            .options(
+                IndexOptions::builder()
+                    .unique(true)
+                    .name("rushwind_pk".to_owned())
+                    .build(),
+            )
+            .build();
+        self.collection
+            .create_index(model)
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        Ok(())
+    }
+
     // ---- shared plumbing ---------------------------------------------------
 
     fn map_err(&self, err: mongodb::error::Error) -> StorageError {
@@ -358,10 +389,35 @@ impl MongoRepo {
             documents.push(self.materialize(row, id)?);
         }
         if !documents.is_empty() {
-            self.collection
-                .insert_many(documents)
+            // Strict all-or-nothing needs a transaction — a replica-set
+            // deployment (the CI mongo:7 runs as a single-node one). A bare
+            // insert_many aborts on the unique-index clash but leaves
+            // earlier documents of the batch in place.
+            let mut session = self
+                .collection
+                .client()
+                .start_session()
                 .await
-                .map_err(|e| self.map_err(e))?;
+                .map_err(|e| StorageError::Backend(e.to_string()))?;
+            session
+                .start_transaction()
+                .await
+                .map_err(|e| StorageError::Backend(e.to_string()))?;
+            let insert = self
+                .collection
+                .insert_many(documents)
+                .session(&mut session)
+                .await;
+            match insert {
+                Ok(_) => session
+                    .commit_transaction()
+                    .await
+                    .map_err(|e| StorageError::Backend(e.to_string()))?,
+                Err(error) => {
+                    // Dropping the session aborts the transaction.
+                    return Err(self.map_err(error));
+                }
+            }
         }
         let stored = rows
             .into_iter()
