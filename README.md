@@ -28,6 +28,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | P1 | `rushwind-transport-axum`（管理面/API）、`rushwind-transport-ws`（会话中间件链：门链 + 准入策略 + 会话停机总线，见 [session-middleware.md](./docs/session-middleware.md)） |
 | P2 | `rushwind-transport-quic`（裸 QUIC 会话 + 全套会话链：门/refuse、原子准入、握手截止）；`rushwind-transport-mqtt`（外部 broker 消费桥）；注册-only registry 薄片（`rushwind-registry` + etcd 适配器，线格式与 go-wind 字节对齐）——全部已交付 |
 | storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横切层 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明装饰器）；算法积木 `rushwind-storage-tree`（树形遍历）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；`rushwind-storage-macros`（DTO 映射 derive）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
+| auth | `rushwind-authn` / `rushwind-authz`（契约）+ 引擎矩阵：认证七引擎（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、鉴权三引擎（acl / rbac / noop）；`AuthenticationGate` 把认证引擎接入会话门链，契约见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
 | P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
 | 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
@@ -44,6 +45,18 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-bootstrap` | 配置驱动装配：YAML → 存储引擎 + HTTP 服务器 + 路由包，汇入单一生命周期 |
 | `crates/rushwind-registry` | 注册-only registry 契约：`Registrar` trait + 与 go-wind 字节对齐的键布局/线格式（golden 钉死） |
 | `crates/rushwind-registry-etcd` | etcd 适配器：租约 TTL + 自愈 keepalive，句柄 Drop 回退过期；live 套件（CI etcd 容器）钉死互操作 |
+| `crates/rushwind-authn` | 认证契约：`Authenticator` trait（提取/验证两半）、`AuthClaims` 声明包、错误分类学、`AuthenticationGate` 门链接入层，见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
+| `crates/rushwind-authn-apikey` | API-key 引擎：静态 key 集 / 每键 claims / 验证回调 |
+| `crates/rushwind-authn-basicauth` | Basic-Auth 引擎：RFC 7617 凭证对静态用户表或验证回调 |
+| `crates/rushwind-authn-hmac` | HMAC 引擎：keyID.timestamp.signature 签名校验，时钟偏移窗口 |
+| `crates/rushwind-authn-jwt` | JWT 引擎：HS/RS/PS/ES/EdDSA 族的铸造与验证，golang-jwt v5 校验默认对齐 |
+| `crates/rushwind-authn-noop` | Noop 引擎：全放行、铸造空凭证 |
+| `crates/rushwind-authn-presharedkey` | 预共享 key 引擎：集合成员校验、铸造为随机抽取 |
+| `crates/rushwind-authn-session` | 会话引擎：不透明会话 ID + 可插拔 SessionStore |
+| `crates/rushwind-authz` | 鉴权契约：`Engine` trait（单裁决 + 三批量过滤）、Subject/Action/Resource/Project 模型、策略 JSON 互通，见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
+| `crates/rushwind-authz-acl` | ACL 引擎：有序 allow/deny 规则 + 通配匹配，默认拒绝、拒绝优先 |
+| `crates/rushwind-authz-rbac` | RBAC 引擎：角色→权限、用户→角色双表，传递继承带环检测 |
+| `crates/rushwind-authz-noop` | Noop 引擎：单裁决全通过、批量过滤全空 |
 | `crates/rushwind-storage` | 存储契约：`Repository` trait、三种分页（Page/Offset/Token）、过滤器树、Viewer 五级租户、FieldMask、审计钩子 |
 | `crates/rushwind-storage-memory` | 内存参考引擎：过滤器/排序/游标的语义基准，零依赖 |
 | `crates/rushwind-storage-seaorm` | SeaORM 引擎：SQLite/PostgreSQL/MySQL 三后端同启，三方言 SQL 快照钉死渲染，SQLite 过一致性套件，live 套件跑 CI 容器 |
@@ -119,7 +132,7 @@ CI 在 Linux/Windows/macOS 三平台矩阵上执行同一套门禁。全 workspa
 
 - 恶意的 `stop()` 拖不死进程：每个阶段有硬预算
 - 服务器 panic 被隔离为记录，绝不跳过兄弟服务器的清理
-- 漏洞报告流程见 [SECURITY.md](./SECURITY.md)，威胁模型见 [docs/threat-model.md](./docs/threat-model.md)
+- 漏洞报告流程见 [SECURITY.md](./SECURITY.md)，威胁模型见 [docs/threat-model.md](./docs/threat-model.md)，认证/鉴权层契约与威胁面速记见 [docs/security-authn-authz.md](./docs/security-authn-authz.md)
 
 ## 许可
 

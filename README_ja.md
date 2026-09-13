@@ -28,6 +28,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | P1 | `rushwind-transport-axum`（管理/API 面）、`rushwind-transport-ws`（セッションミドルウェアチェーン：ゲート + アドミッション + セッションシャットダウンバス、[session-middleware.md](./docs/session-middleware.md) 参照） |
 | P2 | `rushwind-transport-quic`（素の QUIC セッション + フルセッションチェーン：ゲート/refuse、原子アドミッション、ハンドシェイク期限——提供済み；h3/webtransport は後から積み上げ）；`rushwind-transport-mqtt`（外部ブローカー消費ブリッジ）、登録のみのレジストリ薄片 ← 現在 |
 | storage | `rushwind-storage`（契約）+ 4 エンジン：インメモリ参照、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横断層 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明デコレーター）；アルゴリズム積木 `rushwind-storage-tree`（木走査）；`rushwind-storage-proto`（proto 定義契約 + protojson + AIP テキスト構文）；`rushwind-storage-macros`（DTO マッピング derive）；[go-crud](https://github.com/tx7do/go-crud) の対位 |
+| auth | `rushwind-authn` / `rushwind-authz`（契約）+ エンジン行列：認証 7 エンジン（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、認可 3 エンジン（acl / rbac / noop）；`AuthenticationGate` が認証エンジンをセッションのゲートチェーンに接続——契約は [docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語） |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
 ## レイアウト
@@ -39,6 +40,18 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-transport-axum` | axum アダプター：`Router` をライフサイクルの下で提供；シャットダウン対応はアーキテクチャ文書参照 |
 | `crates/rushwind-transport-ws` | WS セッションルートビルダー：ゲートチェーン + アドミッション + セッションシャットダウンバス |
 | `crates/rushwind-transport-quic` | QUIC アダプター：quinn 受け入れループをライフサイクルに接続、フルセッションチェーン；`stop()` は実釈放（Endpoint::close） |
+| `crates/rushwind-authn` | 認証契約：`Authenticator` trait（抽出/検証の両半分）、`AuthClaims` クレームバッグ、エラー分類学、`AuthenticationGate` ゲート接続層——[docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語）参照 |
+| `crates/rushwind-authn-apikey` | API キー・エンジン：静的キー集合 / キーごとのクレーム / 検証コールバック |
+| `crates/rushwind-authn-basicauth` | Basic-Auth エンジン：RFC 7617 資格情報を静的ユーザーテーブルまたは検証コールバックに対して |
+| `crates/rushwind-authn-hmac` | HMAC エンジン：keyID.timestamp.signature 検証、時計ずれ窓 |
+| `crates/rushwind-authn-jwt` | JWT エンジン：HS/RS/PS/ES/EdDSA 族の発行と検証、golang-jwt v5 既定の検証プロファイルに整合 |
+| `crates/rushwind-authn-noop` | noop エンジン：すべて受理、空の資格情報を鋳造 |
+| `crates/rushwind-authn-presharedkey` | 事前共有鍵エンジン：集合所属検査、鋳造は無作為抽出 |
+| `crates/rushwind-authn-session` | セッション・エンジン：不透明セッション ID と取り替え可能な SessionStore |
+| `crates/rushwind-authz` | 認可契約：`Engine` trait（単一評決 + 3 つの一括フィルタ）、Subject/Action/Resource/Project モデル、JSON ポリシー相互運用——[docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語）参照 |
+| `crates/rushwind-authz-acl` | ACL エンジン：順序付き allow/deny ルール + ワイルドカード照合、既定拒否・拒否優先 |
+| `crates/rushwind-authz-rbac` | RBAC エンジン：役割→権限、ユーザー→役割の双表、循環検出付きの推移的継承 |
+| `crates/rushwind-authz-noop` | noop エンジン：単一評決はすべて通過、一括フィルタはすべて空 |
 | `crates/rushwind-storage` | ストレージ契約：`Repository` trait、3 種のページング（Page/Offset/Token）、フィルターツリー、5 段階 Viewer テナンシー、FieldMask、監査フック |
 | `crates/rushwind-storage-memory` | インメモリ参照エンジン：フィルター/ソート/カーソルの意味論的基準、依存ゼロ |
 | `crates/rushwind-storage-seaorm` | SeaORM エンジン：SQLite/PostgreSQL/MySQL の 3 バックエンド同梱、方言ごとの SQL はスナップショットで固定、SQLite がスイート合格、live スイートは CI コンテナで実行 |

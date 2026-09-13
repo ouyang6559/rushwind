@@ -28,6 +28,7 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | P1 | `rushwind-transport-axum` (admin/API), `rushwind-transport-ws` (session middleware chain: gates + admission policy + session-shutdown bus, see [session-middleware.md](./docs/session-middleware.md), Chinese) |
 | P2 | `rushwind-transport-quic` (raw QUIC sessions + full session chain: gates/refuse, atomic admission, handshake deadline — delivered; h3/webtransport layering later); `rushwind-transport-mqtt` (external-broker consumer bridge — delivered); registration-only registry slice ← current |
 | storage | `rushwind-storage` (contract) + four engines: in-memory reference, SeaORM (SQLite/PostgreSQL/MySQL), MongoDB; cross-cutting `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe` (transparent decorators); the `rushwind-storage-tree` algorithm brick; `rushwind-storage-proto` (proto-defined contract + protojson + AIP text syntax); `rushwind-storage-macros` (DTO mapping derives); counterpart of [go-crud](https://github.com/tx7do/go-crud) |
+| auth | `rushwind-authn` / `rushwind-authz` (contracts) + the engine matrix: seven authentication engines (apikey / basicauth / hmac / jwt / noop / presharedkey / session), three authorization engines (acl / rbac / noop); `AuthenticationGate` adapts an authenticator onto the session gate chain — contracts in [docs/security-authn-authz.md](./docs/security-authn-authz.md) (Chinese) |
 | P3 | `rushwind-bootstrap` (serde YAML config-driven assembly: storage factories + route packs + server factories) — delivered |
 | next | h3/webtransport layering, mqtt handler registry, kcp (if legacy interop), rushwind-protocols standalone repo |
 
@@ -42,6 +43,18 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `crates/rushwind-transport-quic` | QUIC adapter: quinn accept loop under the lifecycle, full session chain; `stop()` is a real release (Endpoint::close) |
 | `crates/rushwind-transport-mqtt` | MQTT consumer bridge: subscribes to an external broker, reconnect backoff + subscription re-establishment, serial pump into the handler |
 | `crates/rushwind-bootstrap` | config-driven assembly: YAML → storage engine + HTTP servers + route packs, under one lifecycle |
+| `crates/rushwind-authn` | the authentication contract: `Authenticator` trait (extraction/validation halves), the `AuthClaims` bag, the error taxonomy, and `AuthenticationGate` — see [docs/security-authn-authz.md](./docs/security-authn-authz.md) (Chinese) |
+| `crates/rushwind-authn-apikey` | API-key engine: static key set / per-key claims / validator callback |
+| `crates/rushwind-authn-basicauth` | basic-auth engine: RFC 7617 credentials against a static user table or a validator callback |
+| `crates/rushwind-authn-hmac` | HMAC engine: keyID.timestamp.signature verification with a clock-skew window |
+| `crates/rushwind-authn-jwt` | JWT engine: mint and verify over the HS/RS/PS/ES/EdDSA families, validation profile aligned to golang-jwt v5 defaults |
+| `crates/rushwind-authn-noop` | noop engine: accepts everything, mints nothing |
+| `crates/rushwind-authn-presharedkey` | preshared-key engine: set-membership check, mint by random draw |
+| `crates/rushwind-authn-session` | session engine: opaque session IDs against a pluggable session store |
+| `crates/rushwind-authz` | the authorization contract: the `Engine` trait (single verdict + three bulk filters), the Subject/Action/Resource/Project model, the JSON policy interchange — see [docs/security-authn-authz.md](./docs/security-authn-authz.md) (Chinese) |
+| `crates/rushwind-authz-acl` | ACL engine: ordered allow/deny rules with wildcard matching, default-deny, deny-overrides |
+| `crates/rushwind-authz-rbac` | RBAC engine: role→permission and user→role maps, transitive inheritance with cycle guards |
+| `crates/rushwind-authz-noop` | noop engine: every verdict passes, every filter returns empty |
 | `crates/rushwind-storage` | storage contracts: `Repository` trait, three paging strategies (Page/Offset/Token), filter tree, five-level viewer tenancy, field mask, audit hook |
 | `crates/rushwind-storage-memory` | in-memory reference engine: the semantic baseline for filters/sorting/cursors, zero dependencies |
 | `crates/rushwind-storage-seaorm` | SeaORM engine: SQLite/PostgreSQL/MySQL all enabled, per-dialect SQL pinned by snapshot tests, SQLite passes the suite, live suites run in CI containers |

@@ -53,3 +53,7 @@ before/after 钩子是应用注册的任意代码，运行在停机预算内。�
 axum-ws 路径上握手超时不可执行（hyper 的升级即时完成，无可观察的握手窗口）；残余项等其执行点落地时随语义进 `SessionPolicy`——契约不收编死字段。
 
 mqtt 消费桥不属于本条威胁面：它是通往预信任基础设施的单条消费连接（无握手面、无会话multiplex），其安全边界是 broker 连接配置与**应用层对不可信 payload 的处理**——后者永远不属于传输层。桥的特有风险是 broker 失联：重连采用有上限的指数退避，broker 长期不可用不会变成紧密重试风暴。
+
+## 预留接口：适配器层的威胁模型
+
+认证/鉴权层（`rushwind-authn` / `rushwind-authz` 及其引擎 crate）是本文预留的第一个适配器层威胁面：其契约、执行点（`AuthenticationGate` 接入会话门链）与威胁面速记见 [security-authn-authz.md](./security-authn-authz.md)。其余适配器 crate 的威胁模型随各自交付补充于此。

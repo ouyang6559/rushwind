@@ -6,7 +6,7 @@
 
 会话型传输（WS、QUIC；后续 tcp、MQTT 消费桥）的握手发生在任何认证上下文存在之前。HTTP 族中间件（tower）永远看不到会话握手——所以会话层有自己的两件契约设施：
 
-**门链（`GateChain` / `HandshakeGate`）**。每个门对握手快照（`Handshake`：HTTP 族填 headers，裸套接字填 remote，从不猜测缺失的证据）给出同步裁决，链按注册顺序评估、首拒截断。门按契约**同步且纯 CPU**：只验证本地证据（签名、允许列表、头部形状），永不执行 IO。需要远程证据的裁决（令牌内省、撤销检查）属于门背后的进程内缓存，或未来的异步门层。
+**门链（`GateChain` / `HandshakeGate`）**。每个门对握手快照（`Handshake`：HTTP 族填 headers，裸套接字填 remote，从不猜测缺失的证据）给出同步裁决，链按注册顺序评估、首拒截断。门按契约**同步且纯 CPU**：只验证本地证据（签名、允许列表、头部形状），永不执行 IO。需要远程证据的裁决（令牌内省、撤销检查）属于门背后的进程内缓存，或未来的异步门层。`rushwind-authn` 的 `AuthenticationGate` 是门链的第一个具体消费者——把任意认证引擎接为门，见 [security-authn-authz.md](./security-authn-authz.md)。
 
 **准入策略（`SessionPolicy`）**。每路由/每监听器级配额。会话上限在 axum-ws 上为升级前预检加升级回调入口的原子准入双检；在 quic 上为连接建立时刻的原子准入；两者共用契约层的 [`SessionCounter`]——单一实现、单点测试，配额槽位因 guard 的 drop 语义（含任务中止路径）不可能泄漏。握手超时在 quic 上为 `Connecting` future 与截止的竞速。未配额的路径零计数、零开销。
 
