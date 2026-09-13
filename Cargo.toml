@@ -32,6 +32,8 @@ rushwind-registry-polaris = { path = "crates/rushwind-registry-polaris", version
 rushwind-broker = { path = "crates/rushwind-broker", version = "0.0.1" }
 rushwind-broker-mqtt = { path = "crates/rushwind-broker-mqtt", version = "0.0.1" }
 rushwind-broker-redis = { path = "crates/rushwind-broker-redis", version = "0.0.1" }
+rushwind-cache = { path = "crates/rushwind-cache", version = "0.0.1" }
+rushwind-cache-redis = { path = "crates/rushwind-cache-redis", version = "0.0.1" }
 rushwind-broker-nats = { path = "crates/rushwind-broker-nats", version = "0.0.1" }
 rushwind-broker-rabbitmq = { path = "crates/rushwind-broker-rabbitmq", version = "0.0.1" }
 rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.1" }
@@ -59,6 +61,7 @@ rushwind-storage-macros = { path = "crates/rushwind-storage-macros", version = "
 rushwind-storage-tree = { path = "crates/rushwind-storage-tree", version = "0.0.1" }
 rushwind-storage-observe = { path = "crates/rushwind-storage-observe", version = "0.0.1" }
 rushwind-storage-axum = { path = "crates/rushwind-storage-axum", version = "0.0.1" }
+rushwind-apalis-postgres = { path = "crates/rushwind-apalis-postgres", version = "0.0.1" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
@@ -100,6 +103,23 @@ sea-orm = { version = "2.0", default-features = false, features = [
     "sqlx-postgres",
     "sqlx-mysql",
     "macros",
+] }
+
+# The apalis task-queue storage traits: the Postgres backend implements
+# `Storage` + `Backend` from this crate. The `apalis` facade (worker
+# runtime, Monitor) is left to consumers of the storage, not the storage
+# itself.
+apalis-core = "0.7"
+# Timestamps for run_at/lock_at columns: chrono, matching sqlx's chrono
+# support for TIMESTAMPTZ.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+# The Postgres driver behind the storage: tokio runtime + rustls, matching
+# the workspace's no-native-tls stance.
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "chrono",
 ] }
 
 # Workspace-wide lint policy: RushWind crates contain no unsafe code, period.
