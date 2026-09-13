@@ -13,10 +13,11 @@ workspace = true
 [dependencies]
 rushwind-storage = { workspace = true }
 rushwind-storage-proto = { workspace = true }
-axum = { version = "0.8", default-features = false, features = ["json"] }
+axum = { version = "0.8", default-features = false, features = ["json", "query"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 rushwind-storage-memory = { workspace = true }
+rushwind-testkit = { workspace = true, features = ["storage"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tower = { version = "0.5", features = ["util"] }

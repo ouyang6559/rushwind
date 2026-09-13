@@ -145,6 +145,8 @@ DTO↔Entity 映射（对位 go-utils/mapper）落在 `rushwind-storage-macros`�
 
 最后两块积木各归其位。树形查询（对位 go-crud Ent 的 tree）不进契约、也不进引擎——`rushwind-storage-tree` 把整棵树的词汇表（`children`/`roots`/`ancestors`/`subtree`/`is_ancestor`）表达为契约级查询的组合：约定一个 `parent_id` 整数列，children/roots 是过滤列表，subtree 是逐层广度扫描，环损坏报 `InvalidQuery` 而非死循环，悬空父 id 如根截止。代价是深子树每层一次 list——SQL 引擎日后可用递归 CTE 出专用快路径，而任何引擎（含装饰器栈）第一天就能用。可观测性同理不绑栈：`rushwind-storage-observe` 只发 `tracing` span（`rushwind.storage`，带 `table`/`op`/`outcome`），导出到 OpenTelemetry 是 subscriber 侧（tracing-opentelemetry）的选型——观测栈是用户的底板，RushWind 只递积木。
 
+最后一块积木把整条线接到线上：`rushwind-storage-axum` 把任意 `Repository` 挂成 CRUD 路由（GET/POST/PATCH/PUT/DELETE），列表查询的两种线上语法在 HTTP 边界双入口——`?q={protojson}` 原样收下 Go 客户端的请求文档，散参数则面向临时调用方（`filter` 走 AIP 文本、`sort=field:dir`、`fields` 掩码、三种分页参数）。写路径的 JSON body 经 schema 校验（未知列、类型错位即 400），错误taxonomy映射为状态码（NotFound→404、InvalidQuery→400、Conflict→409、Unsupported→501）。租户在边界收口：`with_viewer` 把请求头解析为 `Viewer`，作用域强制仍然由引擎在每次调用时执行——HTTP 层只负责把身份变成作用域，从不越权放行。
+
 ## 与 go-wind 的语义差异
 
 | Go（go-wind） | Rust（RushWind） | 理由 |

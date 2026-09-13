@@ -30,9 +30,7 @@ pub fn record_from_json(
             },
             rushwind_storage::ColumnKind::Int => match raw {
                 serde_json::Value::Number(n) => Value::Int(n.as_i64().ok_or_else(|| {
-                    StorageError::InvalidQuery(format!(
-                        "column {key:?} needs an in-range integer"
-                    ))
+                    StorageError::InvalidQuery(format!("column {key:?} needs an in-range integer"))
                 })?),
                 serde_json::Value::Null => Value::Null,
                 other => return Err(kind_error(key, "an integer", other)),

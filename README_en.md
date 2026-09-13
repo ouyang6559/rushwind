@@ -52,6 +52,7 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive macros: DTO↔Record mapping generated at compile time (the go-utils/mapper counterpart) |
 | `crates/rushwind-storage-tree` | tree queries: children/roots/ancestors/subtree as contract-level traversal with cycle guards, on any engine |
 | `crates/rushwind-storage-observe` | observability decorator: one `tracing` span per call (table/op/outcome); OTel export is a subscriber choice |
+| `crates/rushwind-storage-axum` | the HTTP edge: any Repository as CRUD routes, list queries via protojson `q` or AIP `filter`, viewer hook for tenancy |
 | `crates/rushwind-testkit` | cross-adapter conformance suites — every transport and engine must pass them in full |
 | `examples/multi-server` | two-server lifecycle demo (cascade, phase ordering) |
 | `examples/axum-admin` | axum adapter demo: health route + signal-driven graceful shutdown |

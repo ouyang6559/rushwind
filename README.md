@@ -54,6 +54,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive 宏：DTO↔Record 映射编译期生成（对位 go-utils/mapper） |
 | `crates/rushwind-storage-tree` | 树形查询：children/roots/ancestors/subtree，契约级遍历 + 环检测，任意引擎可用 |
 | `crates/rushwind-storage-observe` | 观测装饰器：每调用一个 `tracing` span（table/op/outcome），OTel 导出交由 subscriber 选型 |
+| `crates/rushwind-storage-axum` | HTTP 端点层：任意 Repository 挂成 CRUD 路由，列表查询双入口（protojson `q` / AIP `filter`），viewer 钩子收口租户 |
 | `crates/rushwind-testkit` | 跨适配器一致性测试套件——任何传输/引擎必须整套通过 |
 | `examples/multi-server` | 双服务器生命周期演示（级联停机、阶段顺序） |
 | `examples/axum-admin` | axum 适配器演示：健康路由 + 信号驱动的优雅停机 |

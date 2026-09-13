@@ -49,13 +49,12 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post, put};
+use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::json;
 
 use rushwind_storage::{
-    FilterExpr, ListQuery, Paging, QueryCtx, Record, Repository, Sort, SortDir, StorageError,
-    Value, Viewer,
+    FilterExpr, ListQuery, Paging, QueryCtx, Repository, Sort, SortDir, StorageError, Value, Viewer,
 };
 use rushwind_storage_proto::wire::list_query_from_json;
 
@@ -118,12 +117,15 @@ async fn list(
         Ok(page) => {
             let items: Vec<serde_json::Value> =
                 page.items.iter().map(json::record_to_json).collect();
-            (StatusCode::OK, Json(json!({
-                "items": items,
-                "total": page.total,
-                "nextToken": page.next_token,
-            })))
-            .into_response()
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "items": items,
+                    "total": page.total,
+                    "nextToken": page.next_token,
+                })),
+            )
+                .into_response()
         }
         Err(error) => error_response(error),
     }
@@ -151,7 +153,9 @@ async fn get_one(
     Path(id): Path<String>,
 ) -> Response {
     let Some(id) = parse_id(&id) else {
-        return error_response(StorageError::InvalidQuery("the id must be an integer".into()));
+        return error_response(StorageError::InvalidQuery(
+            "the id must be an integer".into(),
+        ));
     };
     match api.repo.get(api.ctx(&headers), Value::Int(id)).await {
         Ok(Some(row)) => (StatusCode::OK, Json(json::record_to_json(&row))).into_response(),
@@ -167,10 +171,16 @@ async fn update(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     let Some(id) = parse_id(&id) else {
-        return error_response(StorageError::InvalidQuery("the id must be an integer".into()));
+        return error_response(StorageError::InvalidQuery(
+            "the id must be an integer".into(),
+        ));
     };
     match json::record_from_json(&body, api.repo.schema()) {
-        Ok(patch) => match api.repo.update(api.ctx(&headers), Value::Int(id), patch).await {
+        Ok(patch) => match api
+            .repo
+            .update(api.ctx(&headers), Value::Int(id), patch)
+            .await
+        {
             Ok(stored) => (StatusCode::OK, Json(json::record_to_json(&stored))).into_response(),
             Err(error) => error_response(error),
         },
@@ -185,7 +195,9 @@ async fn upsert(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     let Some(id) = parse_id(&id) else {
-        return error_response(StorageError::InvalidQuery("the id must be an integer".into()));
+        return error_response(StorageError::InvalidQuery(
+            "the id must be an integer".into(),
+        ));
     };
     match json::record_from_json(&body, api.repo.schema()) {
         Ok(mut row) => {
@@ -205,7 +217,9 @@ async fn delete_one(
     Path(id): Path<String>,
 ) -> Response {
     let Some(id) = parse_id(&id) else {
-        return error_response(StorageError::InvalidQuery("the id must be an integer".into()));
+        return error_response(StorageError::InvalidQuery(
+            "the id must be an integer".into(),
+        ));
     };
     match api.repo.delete(api.ctx(&headers), Value::Int(id)).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),

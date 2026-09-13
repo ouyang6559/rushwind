@@ -49,6 +49,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-storage-macros` | `ToRecord`/`FromRecord` derive マクロ：DTO↔Record マッピングをコンパイル時に生成（go-utils/mapper の対位） |
 | `crates/rushwind-storage-tree` | 木構造クエリ：children/roots/ancestors/subtree を契約レベルの走査で＋循環検出、任意のエンジンで利用可 |
 | `crates/rushwind-storage-observe` | 可観測性デコレーター：呼び出しごとに `tracing` スパン（table/op/outcome）、OTel 出力は subscriber の選択 |
+| `crates/rushwind-storage-axum` | HTTP エッジ層：任意の Repository を CRUD ルートとして公開、一覧クエリは protojson `q` / AIP `filter` の二入口、viewer フックでテナンシーを収口 |
 | `crates/rushwind-testkit` | クロスアダプター適合性スイート——すべてのトランスポート/エンジンが全項目に合格する必要がある |
 | `examples/multi-server` | 2 サーバーのライフサイクル・デモ（カスケード、フェーズ順序） |
 | `examples/axum-admin` | axum アダプター・デモ：ヘルスルート + シグナル駆動のグレースフルシャットダウン |
