@@ -10,6 +10,7 @@
 use crate::error::StorageError;
 use crate::schema::{ColumnKind, Schema};
 use crate::value::Value;
+use std::cmp::Ordering;
 
 /// A comparison operator, the Rust spelling of go-crud's operator table.
 ///
@@ -192,6 +193,61 @@ impl FilterExpr {
         &self.0
     }
 
+    /// Evaluates the predicate against a row — the contract's reference
+    /// semantics (the same evaluator the in-memory engine and the conformance
+    /// suite pin). Engines that cannot push a filter down (Cassandra's
+    /// query model, InfluxDB's schema) fetch candidates and evaluate this.
+    /// A field absent from the row is NULL, exactly as in SQL.
+    pub fn matches(&self, row: &crate::record::Record) -> bool {
+        Self::eval_node(self.node(), row)
+    }
+
+    fn eval_node(node: &FilterNode, row: &crate::record::Record) -> bool {
+        match node {
+            FilterNode::All(children) => children.iter().all(|c| Self::eval_node(c, row)),
+            FilterNode::Any(children) => children.iter().any(|c| Self::eval_node(c, row)),
+            FilterNode::Cond(condition) => Self::eval_cond(condition, row),
+        }
+    }
+
+    fn eval_cond(condition: &Condition, row: &crate::record::Record) -> bool {
+        let value = row.get(&condition.field).cloned().unwrap_or(Value::Null);
+        let first = || condition.values.first().cloned().unwrap_or(Value::Null);
+        let text_arg = |fmt: fn(&str) -> String| match first().as_str() {
+            Some(s) => Value::Text(fmt(s)),
+            None => Value::Null,
+        };
+        let cmp = |other: &Value| value.compare(other);
+        match condition.op {
+            Op::Eq => cmp(&first()) == Ordering::Equal,
+            Op::NotEq => cmp(&first()) != Ordering::Equal,
+            Op::Gt => cmp(&first()) == Ordering::Greater,
+            Op::Gte => cmp(&first()) != Ordering::Less,
+            Op::Lt => cmp(&first()) == Ordering::Less,
+            Op::Lte => cmp(&first()) != Ordering::Greater,
+            Op::In => condition.values.iter().any(|v| cmp(v) == Ordering::Equal),
+            Op::NotIn => !condition.values.iter().any(|v| cmp(v) == Ordering::Equal),
+            Op::Like => like(&value, &first(), false),
+            Op::NotLike => !like(&value, &first(), false),
+            Op::Ilike => like(&value, &first(), true),
+            Op::IsNull => value.is_null(),
+            Op::IsNotNull => !value.is_null(),
+            Op::Between => {
+                cmp(&first()) != Ordering::Less
+                    && cmp(&condition.values.get(1).cloned().unwrap_or(Value::Null))
+                        != Ordering::Greater
+            }
+            Op::NotBetween => {
+                cmp(&first()) == Ordering::Less
+                    || cmp(&condition.values.get(1).cloned().unwrap_or(Value::Null))
+                        == Ordering::Greater
+            }
+            Op::Contains => like(&value, &text_arg(|s| format!("%{s}%")), false),
+            Op::StartsWith => like(&value, &text_arg(|s| format!("{s}%")), false),
+            Op::EndsWith => like(&value, &text_arg(|s| format!("%{s}")), false),
+        }
+    }
+
     /// Checks the expression against a schema: every leaf must name a
     /// declared column, honor its operator's arity, respect kind
     /// compatibility (pattern operators are text-only), and carry operand
@@ -301,5 +357,79 @@ mod tests {
             ]),
         ]);
         expr.validate(&schema()).expect("valid expression");
+    }
+}
+
+/// SQL `LIKE` semantics: `%` any sequence, `_` one character, no escapes;
+/// `fold` switches to case-insensitive matching.
+fn like(value: &Value, pattern: &Value, fold: bool) -> bool {
+    let (Some(text), Some(pattern)) = (value.as_str(), pattern.as_str()) else {
+        return false;
+    };
+    let norm = |s: &str| {
+        if fold {
+            s.to_lowercase().chars().collect::<Vec<char>>()
+        } else {
+            s.chars().collect()
+        }
+    };
+    let (t, p) = (norm(text), norm(pattern));
+    let (mut ti, mut pi) = (0usize, 0usize);
+    let (mut star, mut mark) = (None::<usize>, 0usize);
+    while ti < t.len() {
+        if pi < p.len() && (p[pi] == '_' || p[pi] == t[ti]) {
+            ti += 1;
+            pi += 1;
+        } else if pi < p.len() && p[pi] == '%' {
+            star = Some(pi);
+            mark = ti;
+            pi += 1;
+        } else if let Some(s) = star {
+            pi = s + 1;
+            mark += 1;
+            ti = mark;
+        } else {
+            return false;
+        }
+    }
+    while pi < p.len() && p[pi] == '%' {
+        pi += 1;
+    }
+    pi == p.len()
+}
+
+#[cfg(test)]
+mod matches_tests {
+    use super::*;
+    use crate::record::Record;
+
+    #[test]
+    fn evaluator_covers_the_operator_table() {
+        let row = Record::new()
+            .set("name", "Bravo")
+            .set("age", 10i64)
+            .set("score", Value::Null);
+
+        assert!(FilterExpr::cond("age", Op::Gte, [Value::Int(10)]).matches(&row));
+        assert!(!FilterExpr::cond("age", Op::Gt, [Value::Int(10)]).matches(&row));
+        assert!(FilterExpr::cond("name", Op::Eq, [Value::Text("Bravo".into())]).matches(&row));
+        assert!(FilterExpr::cond("name", Op::Contains, [Value::Text("avo".into())]).matches(&row));
+        assert!(FilterExpr::cond("name", Op::Ilike, [Value::Text("%br%".into())]).matches(&row));
+        assert!(FilterExpr::cond("score", Op::IsNull, []).matches(&row));
+        assert!(!FilterExpr::cond("score", Op::IsNotNull, []).matches(&row));
+        assert!(FilterExpr::cond("absent", Op::IsNull, []).matches(&row));
+        assert!(FilterExpr::cond("age", Op::In, [Value::Int(1), Value::Int(10)]).matches(&row));
+        assert!(
+            FilterExpr::cond("age", Op::Between, [Value::Int(5), Value::Int(15)]).matches(&row)
+        );
+
+        let group = FilterExpr::any([
+            FilterExpr::cond("age", Op::Lt, [Value::Int(5)]),
+            FilterExpr::all([
+                FilterExpr::cond("age", Op::Gte, [Value::Int(10)]),
+                FilterExpr::cond("name", Op::StartsWith, [Value::Text("Br".into())]),
+            ]),
+        ]);
+        assert!(group.matches(&row));
     }
 }

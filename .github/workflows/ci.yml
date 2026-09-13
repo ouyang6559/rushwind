@@ -112,6 +112,17 @@ jobs:
         env:
           MONGODB_URI: mongodb://localhost:27017/?directConnection=true
 
+      - name: Start Cassandra (single node)
+        run: |
+          docker run -d --name cassandra -p 9042:9042 -e CASSANDRA_BROADCAST_ADDRESS=127.0.0.1 cassandra:5.0
+          sleep 75
+          docker exec cassandra cqlsh -e "CREATE KEYSPACE IF NOT EXISTS rushwind_suite WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
+
+      - name: Cassandra suite
+        run: cargo test -p rushwind-storage-cassandra --features live
+        env:
+          CASSANDRA_HOSTS: 127.0.0.1:9042
+
   registry-integration:
     name: registry conformance (live etcd)
     runs-on: ubuntu-latest

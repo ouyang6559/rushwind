@@ -21,9 +21,8 @@ use std::future::ready;
 use std::sync::Mutex;
 
 use rushwind_storage::{
-    AuditAction, AuditEntry, Condition, FieldMask, FilterExpr, FilterNode, ListQuery, Op, Page,
-    Paging, QueryCtx, Record, RepoFuture, Repository, Schema, Scope, Sort, SortDir, StorageError,
-    Value, Viewer,
+    AuditAction, AuditEntry, FieldMask, FilterExpr, FilterNode, ListQuery, Page, Paging, QueryCtx,
+    Record, RepoFuture, Repository, Schema, Scope, Sort, SortDir, StorageError, Value, Viewer,
 };
 
 /// A [`Repository`] keeping rows in process memory.
@@ -98,13 +97,13 @@ impl MemoryRepo {
         let in_scope = match ctx.viewer.scope(Viewer::OWNER_COLUMN, Viewer::UNIT_COLUMN) {
             Scope::Deny => false,
             Scope::Unrestricted => true,
-            Scope::Scoped(filter) => eval(filter.node(), row),
+            Scope::Scoped(filter) => filter.matches(row),
         };
         if !in_scope {
             return false;
         }
         match extra {
-            Some(node) => eval(node, row),
+            Some(node) => FilterExpr::from(node.clone()).matches(row),
             None => true,
         }
     }
@@ -445,89 +444,4 @@ fn sort_rows(rows: &mut [&Record], sort: &Sort) {
         }
         pk_of(a).cmp(&pk_of(b))
     });
-}
-
-/// Evaluates a filter node against a row — the contract's reference
-/// semantics every SQL engine must match.
-fn eval(node: &FilterNode, row: &Record) -> bool {
-    match node {
-        FilterNode::All(children) => children.iter().all(|c| eval(c, row)),
-        FilterNode::Any(children) => children.iter().any(|c| eval(c, row)),
-        FilterNode::Cond(cond) => eval_cond(cond, row),
-    }
-}
-
-fn eval_cond(cond: &Condition, row: &Record) -> bool {
-    // A field absent from the record is NULL, same as in SQL.
-    let value = row.get(&cond.field).cloned().unwrap_or(Value::Null);
-    let first = || cond.values.first().cloned().unwrap_or(Value::Null);
-    let text_arg = |fmt: fn(&str) -> String| match first().as_str() {
-        Some(s) => Value::Text(fmt(s)),
-        None => Value::Null,
-    };
-    let cmp = |other: &Value| value.compare(other);
-    match cond.op {
-        Op::Eq => cmp(&first()) == Ordering::Equal,
-        Op::NotEq => cmp(&first()) != Ordering::Equal,
-        Op::Gt => cmp(&first()) == Ordering::Greater,
-        Op::Gte => cmp(&first()) != Ordering::Less,
-        Op::Lt => cmp(&first()) == Ordering::Less,
-        Op::Lte => cmp(&first()) != Ordering::Greater,
-        Op::In => cond.values.iter().any(|v| cmp(v) == Ordering::Equal),
-        Op::NotIn => !cond.values.iter().any(|v| cmp(v) == Ordering::Equal),
-        Op::Like => like(&value, &first(), false),
-        Op::NotLike => !like(&value, &first(), false),
-        Op::Ilike => like(&value, &first(), true),
-        Op::IsNull => value.is_null(),
-        Op::IsNotNull => !value.is_null(),
-        Op::Between => {
-            cmp(&first()) != Ordering::Less
-                && cmp(&cond.values.get(1).cloned().unwrap_or(Value::Null)) != Ordering::Greater
-        }
-        Op::NotBetween => {
-            cmp(&first()) == Ordering::Less
-                || cmp(&cond.values.get(1).cloned().unwrap_or(Value::Null)) == Ordering::Greater
-        }
-        Op::Contains => like(&value, &text_arg(|s| format!("%{s}%")), false),
-        Op::StartsWith => like(&value, &text_arg(|s| format!("{s}%")), false),
-        Op::EndsWith => like(&value, &text_arg(|s| format!("%{s}")), false),
-    }
-}
-
-/// SQL `LIKE` semantics: `%` any sequence, `_` one character, no escapes;
-/// `fold` switches to case-insensitive matching.
-fn like(value: &Value, pattern: &Value, fold: bool) -> bool {
-    let (Some(text), Some(pattern)) = (value.as_str(), pattern.as_str()) else {
-        return false;
-    };
-    let norm = |s: &str| {
-        if fold {
-            s.to_lowercase().chars().collect::<Vec<char>>()
-        } else {
-            s.chars().collect()
-        }
-    };
-    let (t, p) = (norm(text), norm(pattern));
-    let (mut ti, mut pi) = (0usize, 0usize);
-    let (mut star, mut mark) = (None::<usize>, 0usize);
-    while ti < t.len() {
-        if pi < p.len() && (p[pi] == '_' || p[pi] == t[ti]) {
-            ti += 1;
-            pi += 1;
-        } else if pi < p.len() && p[pi] == '%' {
-            star = Some(pi);
-            mark = ti;
-            pi += 1;
-        } else if let Some(s) = star {
-            pi = s + 1;
-            mark += 1;
-            ti = mark;
-        } else {
-            return false;
-        }
-    }
-    while pi < p.len() && p[pi] == '%' {
-        pi += 1;
-    }
-    pi == p.len()
 }
