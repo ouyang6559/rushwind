@@ -132,6 +132,12 @@ jobs:
           curl -fsS http://localhost:2379/health
 
       - name: Etcd suite
-        run: cargo test -p rushwind-registry-etcd --features live
+        run: |
+          cargo test -p rushwind-registry-etcd --features live -- --nocapture 2>&1 | tee /tmp/etcd-suite.log
+          exit ${PIPESTATUS[0]}
         env:
           REGISTRY_ETCD_ENDPOINT: http://localhost:2379
+
+      - name: Report suite failure detail
+        if: failure()
+        run: grep -h "panicked at\|register must\|etcd" /tmp/etcd-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
