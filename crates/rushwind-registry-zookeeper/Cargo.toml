@@ -1,0 +1,24 @@
+[package]
+name = "rushwind-registry-zookeeper"
+description = "ZooKeeper adapter for the RushWind registry contract: registration and discovery over the ZooKeeper protocol."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Live ZooKeeper suite (via REGISTRY_ZOOKEEPER_ADDRESS); run by CI's
+# registry-integration job against a service container.
+live = []
+
+[dependencies]
+rushwind-transport = { workspace = true }
+rushwind-registry = { workspace = true }
+zookeeper-async = "5"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
