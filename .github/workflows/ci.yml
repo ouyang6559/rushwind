@@ -334,3 +334,41 @@ jobs:
       - name: Report suite failure detail
         if: failure()
         run: grep -h "panicked at\|must succeed\|mqtt\|redis" /tmp/mqtt-suite.log /tmp/redis-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
+
+  apalis-pg-integration:
+    name: task queue conformance (live postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rushwind
+          POSTGRES_PASSWORD: rushwind
+          POSTGRES_DB: rushwind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rushwind"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Apalis postgres suite
+        run: |
+          cargo test -p rushwind-apalis-postgres --features live -- --nocapture --test-threads=1 2>&1 | tee /tmp/apalis-pg-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          APALIS_PG_DATABASE_URL: postgres://rushwind:rushwind@localhost:5432/rushwind
+
+      - name: Report suite failure detail
+        if: failure()
+        run: grep -h "panicked at\|apalis postgres storage failed" /tmp/apalis-pg-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'

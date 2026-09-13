@@ -184,6 +184,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "apalis-postgres-demo"
+version = "0.0.1"
+dependencies = [
+ "apalis-core",
+ "chrono",
+ "rushwind-apalis-postgres",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
