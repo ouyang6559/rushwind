@@ -262,3 +262,31 @@ jobs:
         run: |
           grep -h "panicked at\|register must\|etcd\|consul\|zookeeper\|nacos\|eureka\|servicecomb\|polaris" /tmp/etcd-suite.log /tmp/consul-suite.log /tmp/zookeeper-suite.log /tmp/nacos-suite.log /tmp/eureka-suite.log /tmp/servicecomb-suite.log /tmp/polaris-suite.log 2>/dev/null \
             | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
+
+  broker-integration:
+    name: broker conformance (live mqtt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Start emqx
+        run: |
+          docker run -d --name emqx -p 1883:1883 emqx:latest
+          for i in $(seq 1 60); do curl -fsS http://localhost:18083/ >/dev/null 2>&1 && break; sleep 2; done
+
+      - name: Mqtt suite
+        run: |
+          cargo test -p rushwind-broker-mqtt --features live -- --nocapture 2>&1 | tee /tmp/mqtt-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          BROKER_MQTT_ADDRESS: 127.0.0.1:1883
+
+      - name: Report suite failure detail
+        if: failure()
+        run: grep -h "panicked at\|must succeed\|mqtt" /tmp/mqtt-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
