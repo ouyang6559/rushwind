@@ -193,6 +193,11 @@ jobs:
           docker run -d --name nacos -e MODE=standalone -e NACOS_AUTH_ENABLE=false -e JVM_XMS=256m -e JVM_XMX=256m -p 8848:8848 -p 9848:9848 nacos/nacos-server:v2.3.2
           for i in $(seq 1 60); do curl -fsS http://localhost:8848/nacos/ >/dev/null 2>&1 && break; sleep 5; done
 
+      - name: Start service-center
+        run: |
+          docker run -d --name servicecenter -p 30100:30100 servicecomb/service-center:latest
+          for i in $(seq 1 60); do curl -fsS http://localhost:30100/health >/dev/null 2>&1 && break; sleep 5; done
+
       - name: Start eureka
         run: |
           docker run -d --name eureka -p 8761:8761 steeltoeoss/eureka-server:latest
@@ -233,8 +238,15 @@ jobs:
         env:
           REGISTRY_EUREKA_ADDRESS: http://127.0.0.1:8761
 
+      - name: ServiceComb suite
+        run: |
+          cargo test -p rushwind-registry-servicecomb --features live -- --nocapture 2>&1 | tee /tmp/servicecomb-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          REGISTRY_SERVICECOMB_ADDRESS: http://127.0.0.1:30100
+
       - name: Report suite failure detail
         if: failure()
         run: |
-          grep -h "panicked at\|register must\|etcd\|consul\|zookeeper\|nacos\|eureka" /tmp/etcd-suite.log /tmp/consul-suite.log /tmp/zookeeper-suite.log /tmp/nacos-suite.log /tmp/eureka-suite.log 2>/dev/null \
+          grep -h "panicked at\|register must\|etcd\|consul\|zookeeper\|nacos\|eureka\|servicecomb" /tmp/etcd-suite.log /tmp/consul-suite.log /tmp/zookeeper-suite.log /tmp/nacos-suite.log /tmp/eureka-suite.log /tmp/servicecomb-suite.log 2>/dev/null \
             | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'

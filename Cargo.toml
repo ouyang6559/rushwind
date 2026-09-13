@@ -27,6 +27,7 @@ rushwind-registry-zookeeper = { path = "crates/rushwind-registry-zookeeper", ver
 rushwind-registry-nacos = { path = "crates/rushwind-registry-nacos", version = "0.0.1" }
 rushwind-registry-kubernetes = { path = "crates/rushwind-registry-kubernetes", version = "0.0.1" }
 rushwind-registry-eureka = { path = "crates/rushwind-registry-eureka", version = "0.0.1" }
+rushwind-registry-servicecomb = { path = "crates/rushwind-registry-servicecomb", version = "0.0.1" }
 rushwind-authn = { path = "crates/rushwind-authn", version = "0.0.1" }
 rushwind-authn-apikey = { path = "crates/rushwind-authn-apikey", version = "0.0.1" }
 rushwind-authn-basicauth = { path = "crates/rushwind-authn-basicauth", version = "0.0.1" }
