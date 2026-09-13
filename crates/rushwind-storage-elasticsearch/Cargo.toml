@@ -1,0 +1,26 @@
+[package]
+name = "rushwind-storage-elasticsearch"
+description = "Elasticsearch engine for the RushWind storage contract: REST search/CRUD with refresh-on-write, shared shape with OpenSearch."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Live suite against a running Elasticsearch (ELASTICSEARCH_URL); run by
+# CI's storage-integration job.
+live = []
+
+[dependencies]
+rushwind-storage = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rushwind-testkit = { workspace = true, features = ["storage"] }
+reqwest = { workspace = true, default-features = false, features = ["json"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
