@@ -26,6 +26,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # etcd-client's build script compiles protobuf definitions and needs
+      # a real protoc binary — none of the runner images ship one.
+      - name: Install protoc (ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install protoc (macos)
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+      - name: Install protoc (windows)
+        if: runner.os == 'Windows'
+        run: choco install protoc -y --no-progress
+
       - name: Format
         run: cargo fmt --all --check
 
@@ -66,16 +78,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        # Transactions (batch-create atomicity) need a replica set; a
-        # single-node one is the smallest deployment that provides them.
-        options: >-
-          --entrypoint mongod
-          --replSet rs0
-          --bind_ip_all
 
     steps:
       - uses: actions/checkout@v7
@@ -83,6 +85,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      # Transactions (batch-create atomicity) need a replica set; a
+      # single-node one is the smallest deployment that provides them.
+      # Started as a plain docker step — service-container entrypoint
+      # overrides proved unreliable.
+      - name: Start MongoDB (single-node replica set)
+        run: |
+          docker run -d --name mongodb -p 27017:27017 mongo:7 mongod --replSet rs0 --bind_ip_all
+          sleep 8
+          docker exec mongodb mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})"
+          sleep 5
 
       - name: SeaORM suite against PostgreSQL
         run: cargo test -p rushwind-storage-seaorm --features live
@@ -94,11 +107,6 @@ jobs:
         env:
           STORAGE_DATABASE_URL: mysql://root:rushwind@localhost:3306/rushwind
 
-      - name: Initiate MongoDB replica set
-        run: |
-          docker exec $(docker ps --filter name=mongodb --format '{{.ID}}') mongosh --quiet --eval "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})"
-          sleep 5
-
       - name: MongoDB suite
         run: cargo test -p rushwind-storage-mongodb --features live
         env:
@@ -109,21 +117,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    services:
-      etcd:
-        image: quay.io/coreos/etcd:v3.5.16
-        env:
-          ETCD_ADVERTISE_CLIENT_URLS: http://0.0.0.0:2379
-          ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
-        ports:
-          - 2379:2379
-
     steps:
       - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Start etcd
+        run: |
+          docker run -d --name etcd -p 2379:2379 --entrypoint etcd quay.io/coreos/etcd:v3.5.16 \
+            --listen-client-urls=http://0.0.0.0:2379 --advertise-client-urls=http://localhost:2379
+          sleep 5
+          curl -fsS http://localhost:2379/health
 
       - name: Etcd suite
         run: cargo test -p rushwind-registry-etcd --features live
