@@ -21,7 +21,10 @@
 //! [`Discovery::get_service`] is the Go `FindMicroServiceInstances`
 //! shape: the instance list for `{appId}/{serviceName}` under the
 //! configured environment, rebuilt with the Go adapter's quirk that
-//! the instance version field carries the **service** id. No
+//! the instance version field carries the **service** id. The find
+//! path serves a view service-center caches for roughly thirty
+//! seconds, so a registration or deregistration lands in discovery
+//! only after that cache's next refresh. No
 //! health-check object is attached to instances — as in the Go
 //! registration — so service-center never expires them; the
 //! heartbeats are belt-and-braces.
@@ -275,7 +278,10 @@ impl Inner {
     /// The default request headers — the sc-client's set.
     fn default_headers(&self) -> [(reqwest::header::HeaderName, String); 3] {
         [
-            (reqwest::header::CONTENT_TYPE, "application/json".to_string()),
+            (
+                reqwest::header::CONTENT_TYPE,
+                "application/json".to_string(),
+            ),
             (reqwest::header::USER_AGENT, "go-client".to_string()),
             (
                 reqwest::header::HeaderName::from_static("x-domain-name"),
@@ -352,7 +358,9 @@ impl Registrar for ServicecombRegistry {
                 .body(payload.to_string())
                 .send()
                 .await
-                .map_err(|e| RegistryError::Failed(format!("servicecomb register instance: {e}")))?;
+                .map_err(|e| {
+                    RegistryError::Failed(format!("servicecomb register instance: {e}"))
+                })?;
             if !response.status().is_success() {
                 let status = response.status().as_u16();
                 let body = response.text().await.unwrap_or_default();
@@ -367,12 +375,7 @@ impl Registrar for ServicecombRegistry {
             let heartbeat_service_id = service_id.clone();
             let heartbeat_instance_id = instance_id.clone();
             let task = tokio::spawn(async move {
-                heartbeat_loop(
-                    task_inner,
-                    heartbeat_service_id,
-                    heartbeat_instance_id,
-                )
-                .await;
+                heartbeat_loop(task_inner, heartbeat_service_id, heartbeat_instance_id).await;
             });
             self.inner
                 .heartbeat_tasks
@@ -476,7 +479,13 @@ impl Discovery for ServicecombRegistry {
                 ));
             };
             // The Go watcher's dependency-establishment query.
-            find_instances(&self.inner, &self_service_id, &self.inner.app_id, service_name).await?;
+            find_instances(
+                &self.inner,
+                &self_service_id,
+                &self.inner.app_id,
+                service_name,
+            )
+            .await?;
 
             let (signal_tx, signal_rx) = tokio::sync::mpsc::unbounded_channel::<Instance>();
             let task_inner = Arc::clone(&self.inner);
@@ -558,32 +567,30 @@ async fn watch_loop(
         // Read events until the stream breaks; a matching event is
         // rebuilt and forwarded, ending the loop when the watcher is
         // gone.
-        loop {
-            match futures::StreamExt::next(&mut stream).await {
-                Some(Ok(message)) => {
-                    let tokio_tungstenite::tungstenite::Message::Text(text) = message else {
-                        continue;
-                    };
-                    let Ok(event) = serde_json::from_str::<WireChangedEvent>(&text) else {
-                        continue;
-                    };
-                    if event.key.service_name.as_deref() != Some(service_name.as_str()) {
-                        continue;
-                    }
-                    let Some(wire) = event.instance else {
-                        continue;
-                    };
-                    let instance = Instance {
-                        id: wire.instance_id.unwrap_or_default(),
-                        name: event.key.service_name.unwrap_or_default(),
-                        version: event.key.version.unwrap_or_default(),
-                        endpoints: wire.endpoints.unwrap_or_default(),
-                    };
-                    if signal_tx.send(instance).is_err() {
-                        return;
-                    }
-                }
-                _ => break,
+        while let Some(message) = futures::StreamExt::next(&mut stream).await {
+            let Ok(message) = message else {
+                break;
+            };
+            let tokio_tungstenite::tungstenite::Message::Text(text) = message else {
+                continue;
+            };
+            let Ok(event) = serde_json::from_str::<WireChangedEvent>(&text) else {
+                continue;
+            };
+            if event.key.service_name.as_deref() != Some(service_name.as_str()) {
+                continue;
+            }
+            let Some(wire) = event.instance else {
+                continue;
+            };
+            let instance = Instance {
+                id: wire.instance_id.unwrap_or_default(),
+                name: event.key.service_name.unwrap_or_default(),
+                version: event.key.version.unwrap_or_default(),
+                endpoints: wire.endpoints.unwrap_or_default(),
+            };
+            if signal_tx.send(instance).is_err() {
+                return;
             }
         }
         tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
@@ -607,7 +614,10 @@ async fn find_instances(
     );
     let mut request = inner.http.get(url);
     for (name, value) in [
-        (reqwest::header::CONTENT_TYPE, "application/json".to_string()),
+        (
+            reqwest::header::CONTENT_TYPE,
+            "application/json".to_string(),
+        ),
         (reqwest::header::USER_AGENT, "go-client".to_string()),
         (
             reqwest::header::HeaderName::from_static("x-domain-name"),
