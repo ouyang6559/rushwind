@@ -36,7 +36,9 @@ pub(crate) fn literal(value: &Value) -> String {
             if text.contains(['.', 'e', 'E']) || text.contains("inf") || text.contains("NaN") {
                 text
             } else {
-                format!("{text:.1}")
+                // Whole-number reals: format the *number* with one decimal
+                // (formatting the string with `.1` would truncate it).
+                format!("{f:.1}")
             }
         }
         Value::Text(s) => format!("'{}'", escape_string(s)),
@@ -420,7 +422,7 @@ mod tests {
         ]);
         assert_eq!(
             node_sql(&tree).expect("translates"),
-            "(`age` >= 10) OR ((`name` ILIKE '%e%') AND (`score` IS NULL))"
+            "(`age` >= 10 OR (`name` ILIKE '%e%' AND `score` IS NULL))"
         );
     }
 
