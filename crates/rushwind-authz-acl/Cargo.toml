@@ -1,0 +1,16 @@
+[package]
+name = "rushwind-authz-acl"
+description = "ACL engine for the RushWind authorization contract: ordered allow/deny rules with wildcard matching, default-deny."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authz = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

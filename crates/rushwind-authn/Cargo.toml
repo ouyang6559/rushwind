@@ -1,0 +1,15 @@
+[package]
+name = "rushwind-authn"
+description = "Authentication contract for RushWind: the Authenticator trait, AuthClaims, the credential-extraction helpers every engine shares, and the session-gate adapter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+serde_json = { workspace = true }

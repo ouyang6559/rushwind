@@ -1,0 +1,17 @@
+[package]
+name = "rushwind-authn-hmac"
+description = "HMAC engine for the Rust authentication contract: keyID.timestamp.signature HMAC-SHA256 request signatures with clock-skew bounds."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authn = { workspace = true }
+serde_json = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }

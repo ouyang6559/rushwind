@@ -1,0 +1,18 @@
+[package]
+name = "rushwind-authn-session"
+description = "Session engine for the Rust authentication contract: opaque session IDs resolved against a pluggable session store."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authn = { workspace = true }
+getrandom = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name = "rushwind-authn-basicauth"
+description = "Basic-auth engine for the RushWind authentication contract: RFC 7617 credentials against a static user table or a validator callback."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authn = { workspace = true }
+base64 = { workspace = true }
+serde_json = { workspace = true }

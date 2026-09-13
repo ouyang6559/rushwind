@@ -22,6 +22,18 @@ rushwind-transport-quic = { path = "crates/rushwind-transport-quic", version = "
 rushwind-transport-mqtt = { path = "crates/rushwind-transport-mqtt", version = "0.0.1" }
 rushwind-registry = { path = "crates/rushwind-registry", version = "0.0.1" }
 rushwind-registry-etcd = { path = "crates/rushwind-registry-etcd", version = "0.0.1" }
+rushwind-authn = { path = "crates/rushwind-authn", version = "0.0.1" }
+rushwind-authn-apikey = { path = "crates/rushwind-authn-apikey", version = "0.0.1" }
+rushwind-authn-basicauth = { path = "crates/rushwind-authn-basicauth", version = "0.0.1" }
+rushwind-authn-hmac = { path = "crates/rushwind-authn-hmac", version = "0.0.1" }
+rushwind-authn-jwt = { path = "crates/rushwind-authn-jwt", version = "0.0.1" }
+rushwind-authn-noop = { path = "crates/rushwind-authn-noop", version = "0.0.1" }
+rushwind-authn-presharedkey = { path = "crates/rushwind-authn-presharedkey", version = "0.0.1" }
+rushwind-authn-session = { path = "crates/rushwind-authn-session", version = "0.0.1" }
+rushwind-authz = { path = "crates/rushwind-authz", version = "0.0.1" }
+rushwind-authz-acl = { path = "crates/rushwind-authz-acl", version = "0.0.1" }
+rushwind-authz-noop = { path = "crates/rushwind-authz-noop", version = "0.0.1" }
+rushwind-authz-rbac = { path = "crates/rushwind-authz-rbac", version = "0.0.1" }
 rushwind-storage = { path = "crates/rushwind-storage", version = "0.0.1" }
 rushwind-storage-memory = { path = "crates/rushwind-storage-memory", version = "0.0.1" }
 rushwind-storage-seaorm = { path = "crates/rushwind-storage-seaorm", version = "0.0.1" }
@@ -59,6 +71,11 @@ pbjson-build = "0.9"
 protox = "0.9"
 serde = "1"
 serde_json = "1"
+base64 = "0.22"
+hmac = "0.12"
+sha2 = "0.10"
+jsonwebtoken = "9"
+getrandom = "0.3"
 
 # SeaORM backs the storage adapter: dynamic statement building (sea_query),
 # connection pooling and transactions. All three SQL backends ship enabled —

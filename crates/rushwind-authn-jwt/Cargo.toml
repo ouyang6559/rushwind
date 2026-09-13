@@ -1,0 +1,16 @@
+[package]
+name = "rushwind-authn-jwt"
+description = "JWT engine for the Rust authentication contract: signed tokens over the HS/RS/PS/ES/EdDSA families, mint and verify."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authn = { workspace = true }
+jsonwebtoken = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name = "rushwind-authz-rbac"
+description = "RBAC engine for the Rust authorization contract: role→permission and user→role maps with recursive role inheritance and wildcard matching."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authz = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

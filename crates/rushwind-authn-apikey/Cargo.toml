@@ -1,0 +1,17 @@
+[package]
+name = "rushwind-authn-apikey"
+description = "API-key engine for the RushWind authentication contract: opaque bearer keys against a static set, per-key claims, or a validator callback."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authn = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

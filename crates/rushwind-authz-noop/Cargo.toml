@@ -1,0 +1,14 @@
+[package]
+name = "rushwind-authz-noop"
+description = "Noop engine for the Rust authorization contract: allows every check, filters every list to empty."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authz = { workspace = true }

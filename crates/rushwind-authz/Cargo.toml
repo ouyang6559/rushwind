@@ -1,0 +1,15 @@
+[package]
+name = "rushwind-authz"
+description = "Authorization contract for RushWind: the Engine trait, the subject/action/resource/project model, and the policy-interchange maps."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

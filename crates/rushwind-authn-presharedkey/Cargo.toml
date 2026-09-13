@@ -1,0 +1,15 @@
+[package]
+name = "rushwind-authn-presharedkey"
+description = "Preshared-key engine for the RushWind authentication contract: membership check against a static key set, mint by uniform random draw."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-authn = { workspace = true }
+getrandom = { workspace = true }
