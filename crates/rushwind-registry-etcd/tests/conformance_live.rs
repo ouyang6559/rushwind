@@ -68,7 +68,10 @@ async fn registered_key_serves_the_go_wire_value() {
 
 #[tokio::test]
 async fn dropped_handle_expires_through_the_lease() {
-    let registrar = EtcdRegistrar::connect_with(&[endpoint()], DEFAULT_NAMESPACE, 1)
+    // TTL 5 s: the keepalive cadence is TTL/3, so a 1 s lease under CI
+    // load can expire before the "must be live" assertion runs. Expiry
+    // itself is still exercised — just with load-tolerant margins.
+    let registrar = EtcdRegistrar::connect_with(&[endpoint()], DEFAULT_NAMESPACE, 5)
         .await
         .expect("etcd connects");
     // A unique key per test: parallel tests must not keep each other's
@@ -81,10 +84,10 @@ async fn dropped_handle_expires_through_the_lease() {
         .await
         .expect("register must succeed");
     // Keep the registration alive briefly, then abandon it: aborting the
-    // keepalive must let the 1 s lease expire and remove the key.
+    // keepalive must let the lease expire and remove the key.
     assert!(raw_get(&key).await.is_some(), "registration must be live");
     drop(handle);
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    tokio::time::sleep(Duration::from_secs(7)).await;
     assert!(
         raw_get(&key).await.is_none(),
         "dropping the handle must let the lease expire the key"
