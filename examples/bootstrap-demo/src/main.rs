@@ -1,0 +1,84 @@
+//! Config-driven assembly demo.
+//!
+//! One YAML document assembles a storage engine (memory, with the schema
+//! captured in the factory closure) and an HTTP server with two route
+//! packs, all under the RushWind lifecycle. `GET /health` is static;
+//! `GET /wired` proves the configured storage reached the route pack.
+//!
+//! Try it: `cargo run -p bootstrap-demo`, then
+//! `curl http://<printed-endpoint>/health` and `/wired`, then Ctrl+C.
+//!
+//! File-based configs work the same way: `Bootstrap::from_yaml_path`.
+
+use std::sync::Arc;
+
+use axum::routing::get;
+use axum::Router;
+use rushwind_bootstrap::{Bootstrap, BootstrapError, RouteInput};
+use rushwind_storage::{ColumnKind, Repository, Schema};
+use rushwind_storage_memory::MemoryRepo;
+use rushwind_transport::StopSignal;
+
+const CONFIG: &str = r#"
+app:
+  name: bootstrap-demo
+  version: v0.1.0
+  stop_timeout_secs: 5
+storage:
+  engine: memory
+  settings: {}
+servers:
+  - kind: http
+    bind: 127.0.0.1:0
+    route_packs: [health, wired]
+"#;
+
+/// The application schema — captured by the storage factory, because the
+/// schema is application knowledge, not configuration.
+fn schema() -> Schema {
+    Schema::builder("widgets", "id")
+        .column("name", ColumnKind::Text)
+        .build()
+        .expect("schema is valid")
+}
+
+fn assemble() -> Result<Bootstrap, BootstrapError> {
+    let bootstrap = Bootstrap::from_yaml_str(CONFIG)?.storage_factory("memory", |_settings| {
+        Box::pin(async move {
+            let repo =
+                MemoryRepo::new(schema()).map_err(|e| BootstrapError::Failed(e.to_string()))?;
+            Ok(Arc::new(repo) as Arc<dyn Repository>)
+        })
+    });
+    Ok(bootstrap
+        .route_pack("health", |_input| {
+            Ok(Router::new().route("/health", get(|| async { "ok" })))
+        })
+        .route_pack("wired", |input: RouteInput| {
+            // Proves the configured storage reaches route packs.
+            let repository = input.repository.clone();
+            Ok(Router::new().route(
+                "/wired",
+                get(move || {
+                    let repository = repository.clone();
+                    async move { format!("repo={}", repository.is_some()) }
+                }),
+            ))
+        }))
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let bootstrapped = assemble()?.build().await?;
+    for endpoint in &bootstrapped.endpoints {
+        println!("[demo] serving on {endpoint}");
+    }
+    println!(
+        "[demo] storage configured: {}",
+        bootstrapped.repository.is_some()
+    );
+
+    let result = bootstrapped.app.run(StopSignal::new()).await;
+    println!("[demo] lifecycle finished: {result:?}");
+    Ok(())
+}

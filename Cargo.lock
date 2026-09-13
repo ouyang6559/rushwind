@@ -241,6 +241,8 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
+ "serde_json",
+ "serde_path_to_error",
  "sha1 0.10.7",
  "sync_wrapper",
  "tokio",
@@ -3079,6 +3081,19 @@ dependencies = [
 [[package]]
 name = "rushwind-storage"
 version = "0.0.1"
+
+[[package]]
+name = "rushwind-storage-axum"
+version = "0.0.1"
+dependencies = [
+ "axum 0.8.9",
+ "rushwind-storage",
+ "rushwind-storage-memory",
+ "rushwind-storage-proto",
+ "serde_json",
+ "tokio",
+ "tower",
+]
 
 [[package]]
 name = "rushwind-storage-cache"

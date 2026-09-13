@@ -1,0 +1,20 @@
+[package]
+name = "bootstrap-demo"
+description = "Config-driven assembly demo: one YAML document assembles a storage engine and an HTTP server under the RushWind lifecycle."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-bootstrap = { workspace = true }
+rushwind-storage = { workspace = true }
+rushwind-storage-memory = { workspace = true }
+rushwind-transport = { workspace = true }
+axum = { version = "0.8", default-features = false }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

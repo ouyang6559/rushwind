@@ -1,0 +1,22 @@
+[package]
+name = "rushwind-storage-axum"
+description = "Axum endpoint layer for the RushWind storage contract: CRUD + list-query routes over any Repository, speaking protojson and AIP text."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-storage = { workspace = true }
+rushwind-storage-proto = { workspace = true }
+axum = { version = "0.8", default-features = false, features = ["json"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rushwind-storage-memory = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+tower = { version = "0.5", features = ["util"] }

@@ -28,7 +28,8 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | P1 | `rushwind-transport-axum`（管理面/API）、`rushwind-transport-ws`（会话中间件链：门链 + 准入策略 + 会话停机总线，见 [session-middleware.md](./docs/session-middleware.md)） |
 | P2 | `rushwind-transport-quic`（裸 QUIC 会话 + 全套会话链：门/refuse、原子准入、握手截止）；`rushwind-transport-mqtt`（外部 broker 消费桥）；注册-only registry 薄片（`rushwind-registry` + etcd 适配器，线格式与 go-wind 字节对齐）——全部已交付 |
 | storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横切层 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明装饰器）；算法积木 `rushwind-storage-tree`（树形遍历）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；`rushwind-storage-macros`（DTO 映射 derive）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
-| P3 | `rushwind-bootstrap`（serde 配置驱动装配）← 当前 |
+| P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
+| 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
 ## 仓库布局
 
@@ -40,6 +41,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-transport-ws` | WS 会话路由构建器：门链 + 准入策略 + 会话停机总线，契约见会话中间件文档 |
 | `crates/rushwind-transport-quic` | QUIC 适配器：quinn 接受循环接入生命周期，全套会话链；`stop()` 为真实释放（Endpoint::close） |
 | `crates/rushwind-transport-mqtt` | MQTT 消费桥：订阅外部 broker，重连退避 + 订阅重建，串行泵入 handler |
+| `crates/rushwind-bootstrap` | 配置驱动装配：YAML → 存储引擎 + HTTP 服务器 + 路由包，汇入单一生命周期 |
 | `crates/rushwind-registry` | 注册-only registry 契约：`Registrar` trait + 与 go-wind 字节对齐的键布局/线格式（golden 钉死） |
 | `crates/rushwind-registry-etcd` | etcd 适配器：租约 TTL + 自愈 keepalive，句柄 Drop 回退过期 |
 | `crates/rushwind-storage` | 存储契约：`Repository` trait、三种分页（Page/Offset/Token）、过滤器树、Viewer 五级租户、FieldMask、审计钩子 |
@@ -58,6 +60,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `examples/ws-gateway` | WS 网关演示：门拒绝 + 会话上限 + 生命周期级联的会话关闭 |
 | `examples/quic-gateway` | QUIC 网关演示：环回门 + 会话上限 + 握手截止 + 端点级联关闭 |
 | `examples/mqtt-ingest` | MQTT 消费演示：对接外部 broker，信号驱动的干净退出 |
+| `examples/bootstrap-demo` | 装配演示：一份 YAML + memory 引擎工厂 + 路由包，起完整服务 |
 | `examples/storage-basics` | 同一段 Repository 代码跑内存与 SQLite 双引擎，输出逐行一致 |
 
 ## 生命周期

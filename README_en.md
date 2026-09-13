@@ -28,7 +28,8 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | P1 | `rushwind-transport-axum` (admin/API), `rushwind-transport-ws` (session middleware chain: gates + admission policy + session-shutdown bus, see [session-middleware.md](./docs/session-middleware.md), Chinese) |
 | P2 | `rushwind-transport-quic` (raw QUIC sessions + full session chain: gates/refuse, atomic admission, handshake deadline — delivered; h3/webtransport layering later); `rushwind-transport-mqtt` (external-broker consumer bridge — delivered); registration-only registry slice ← current |
 | storage | `rushwind-storage` (contract) + four engines: in-memory reference, SeaORM (SQLite/PostgreSQL/MySQL), MongoDB; cross-cutting `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe` (transparent decorators); the `rushwind-storage-tree` algorithm brick; `rushwind-storage-proto` (proto-defined contract + protojson + AIP text syntax); `rushwind-storage-macros` (DTO mapping derives); counterpart of [go-crud](https://github.com/tx7do/go-crud) |
-| P3 | `rushwind-bootstrap` (serde-based config-driven assembly) |
+| P3 | `rushwind-bootstrap` (serde YAML config-driven assembly: storage factories + route packs + server factories) — delivered |
+| next | h3/webtransport layering, mqtt handler registry, kcp (if legacy interop), rushwind-protocols standalone repo |
 
 ## Layout
 
@@ -40,6 +41,7 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `crates/rushwind-transport-ws` | WS session route builder: gates + admission policy + session-shutdown bus; contracts in the session-middleware doc |
 | `crates/rushwind-transport-quic` | QUIC adapter: quinn accept loop under the lifecycle, full session chain; `stop()` is a real release (Endpoint::close) |
 | `crates/rushwind-transport-mqtt` | MQTT consumer bridge: subscribes to an external broker, reconnect backoff + subscription re-establishment, serial pump into the handler |
+| `crates/rushwind-bootstrap` | config-driven assembly: YAML → storage engine + HTTP servers + route packs, under one lifecycle |
 | `crates/rushwind-storage` | storage contracts: `Repository` trait, three paging strategies (Page/Offset/Token), filter tree, five-level viewer tenancy, field mask, audit hook |
 | `crates/rushwind-storage-memory` | in-memory reference engine: the semantic baseline for filters/sorting/cursors, zero dependencies |
 | `crates/rushwind-storage-seaorm` | SeaORM engine: SQLite/PostgreSQL/MySQL all enabled, per-dialect SQL pinned by snapshot tests, SQLite passes the suite, live suites run in CI containers |
@@ -56,6 +58,7 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `examples/ws-gateway` | WS gateway demo: gate rejection + session cap + lifecycle-aligned session teardown |
 | `examples/quic-gateway` | QUIC gateway demo: loopback gate + session cap + handshake deadline + endpoint-level teardown |
 | `examples/mqtt-ingest` | MQTT consumer demo: point at an external broker, clean signal-driven exit |
+| `examples/bootstrap-demo` | assembly demo: one YAML + memory factory + route packs, a full service |
 | `examples/storage-basics` | the same repository code over in-memory and SQLite engines, line-for-line identical output |
 
 ## For adapter authors

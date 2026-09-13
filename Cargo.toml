@@ -28,6 +28,7 @@ rushwind-storage-seaorm = { path = "crates/rushwind-storage-seaorm", version = "
 rushwind-storage-cache = { path = "crates/rushwind-storage-cache", version = "0.0.1" }
 rushwind-storage-proto = { path = "crates/rushwind-storage-proto", version = "0.0.1" }
 rushwind-storage-mongodb = { path = "crates/rushwind-storage-mongodb", version = "0.0.1" }
+rushwind-bootstrap = { path = "crates/rushwind-bootstrap", version = "0.0.1" }
 rushwind-storage-soft-delete = { path = "crates/rushwind-storage-soft-delete", version = "0.0.1" }
 rushwind-storage-macros = { path = "crates/rushwind-storage-macros", version = "0.0.1" }
 rushwind-storage-tree = { path = "crates/rushwind-storage-tree", version = "0.0.1" }
