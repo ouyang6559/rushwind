@@ -20,6 +20,10 @@
 //! - **server factories** — closures turning server settings into an
 //!   `Arc<dyn Server>`, for kinds beyond the built-in `http` (ws, quic,
 //!   mqtt glue registers here).
+//! - **storage endpoints** — `storage_endpoints` entries mount the
+//!   storage line's HTTP edge (the built-in `"crud"` pack nests
+//!   `rushwind-storage-axum`'s `CrudApi` under a prefix) or any
+//!   application-registered api pack.
 //!
 //! # A minimal document
 //!
@@ -53,6 +57,7 @@ use std::time::Duration;
 use axum::Router;
 use rushwind_core::App;
 use rushwind_storage::Repository;
+use rushwind_storage_axum::CrudApi;
 use rushwind_transport::Server;
 use rushwind_transport_axum::AxumServer;
 use serde::Deserialize;
@@ -97,6 +102,10 @@ pub enum BootstrapError {
     UnknownRoutePack(String),
     /// A `storage.engine` with no registered factory.
     UnknownStorageEngine(String),
+    /// A `storage_endpoints[].api` with no registered pack.
+    UnknownApiPack(String),
+    /// `storage_endpoints` declared without a `storage` section.
+    StorageEndpointWithoutStorage,
     /// A transport server failed to construct (e.g. bind refused).
     Server(rushwind_transport::ServerError),
     /// A factory failed.
@@ -111,6 +120,10 @@ impl std::fmt::Display for BootstrapError {
             Self::UnknownRoutePack(name) => write!(f, "unknown route pack: {name}"),
             Self::UnknownStorageEngine(engine) => {
                 write!(f, "unknown storage engine: {engine}")
+            }
+            Self::UnknownApiPack(name) => write!(f, "unknown storage api pack: {name}"),
+            Self::StorageEndpointWithoutStorage => {
+                write!(f, "storage_endpoints requires a storage section")
             }
             Self::Server(e) => write!(f, "server construction failed: {e}"),
             Self::Failed(msg) => write!(f, "bootstrap failed: {msg}"),
@@ -135,6 +148,10 @@ pub struct BootstrapConfig {
     /// Storage engine selection; omit for storage-less applications.
     #[serde(default)]
     pub storage: Option<StorageConfig>,
+    /// HTTP edge mounted over the configured storage, in order. Requires
+    /// `storage`.
+    #[serde(default)]
+    pub storage_endpoints: Vec<StorageEndpointConfig>,
     /// Servers to assemble, in order.
     #[serde(default)]
     pub servers: Vec<ServerConfig>,
@@ -174,6 +191,18 @@ pub struct ServerConfig {
     pub settings: serde_json::Value,
 }
 
+/// One HTTP edge mounted over the configured storage.
+#[derive(Debug, Deserialize)]
+pub struct StorageEndpointConfig {
+    /// The path prefix the api router nests under (e.g. `/widgets`).
+    pub nest: String,
+    /// The registered api pack name (`"crud"` is built in).
+    pub api: String,
+    /// Pack-specific settings, passed verbatim.
+    #[serde(default)]
+    pub settings: serde_json::Value,
+}
+
 /// The route-pack closure type.
 type RoutePackFn = Box<dyn Fn(RouteInput) -> Result<Router, BootstrapError> + Send + Sync>;
 
@@ -183,6 +212,11 @@ type StorageFactoryFn = Box<
         + Send
         + Sync,
 >;
+
+/// The api-pack closure type: one storage HTTP edge, mounted under a
+/// prefix. The built-in `"crud"` pack (backed by `rushwind-storage-axum`)
+/// ships with the bootstrap; application packs register alongside it.
+type ApiPackFn = Box<dyn Fn(RouteInput) -> Result<Router, BootstrapError> + Send + Sync>;
 
 /// The server-factory closure type, for kinds beyond the built-in `http`.
 type ServerFactoryFn = Box<
@@ -201,6 +235,7 @@ pub struct Bootstrap {
     route_packs: HashMap<String, RoutePackFn>,
     storage_factories: HashMap<String, StorageFactoryFn>,
     server_factories: HashMap<String, ServerFactoryFn>,
+    api_packs: HashMap<String, ApiPackFn>,
 }
 
 impl std::fmt::Debug for Bootstrap {
@@ -227,12 +262,27 @@ impl Bootstrap {
 
     /// Wraps an already-parsed configuration.
     pub fn from_config(config: BootstrapConfig) -> Self {
+        let mut api_packs: HashMap<String, ApiPackFn> = HashMap::new();
+        api_packs.insert("crud".to_string(), Box::new(crud_api_pack));
         Self {
             config,
             route_packs: HashMap::new(),
             storage_factories: HashMap::new(),
             server_factories: HashMap::new(),
+            api_packs,
         }
+    }
+
+    /// Registers a named storage-endpoint api pack, mountable from
+    /// `storage_endpoints[].api`. The built-in `"crud"` pack serves the
+    /// storage line's HTTP edge; application packs override it by
+    /// registering the same name.
+    pub fn api_pack<F>(mut self, name: impl Into<String>, pack: F) -> Self
+    where
+        F: Fn(RouteInput) -> Result<Router, BootstrapError> + Send + Sync + 'static,
+    {
+        self.api_packs.insert(name.into(), Box::new(pack));
+        self
     }
 
     /// Registers a named route pack.
@@ -305,6 +355,22 @@ impl Bootstrap {
             repository: repository.clone(),
         };
 
+        // Storage endpoints: HTTP edges mounted over the configured
+        // storage. They require a storage section (there is nothing to
+        // mount otherwise) and merge into every http server's router.
+        let mut storage_routers: Vec<(String, Router)> = Vec::new();
+        for endpoint_config in &self.config.storage_endpoints {
+            if repository.is_none() {
+                return Err(BootstrapError::StorageEndpointWithoutStorage);
+            }
+            let pack = self
+                .api_packs
+                .get(&endpoint_config.api)
+                .ok_or_else(|| BootstrapError::UnknownApiPack(endpoint_config.api.clone()))?;
+            let router = pack(input.clone())?;
+            storage_routers.push((endpoint_config.nest.clone(), router));
+        }
+
         let mut endpoints = Vec::new();
         let mut servers = Vec::new();
         for server_config in &self.config.servers {
@@ -324,6 +390,9 @@ impl Bootstrap {
                             .get(pack_name)
                             .ok_or_else(|| BootstrapError::UnknownRoutePack(pack_name.clone()))?;
                         router = router.merge(pack(input.clone())?);
+                    }
+                    for (prefix, edge_router) in &storage_routers {
+                        router = router.nest(prefix, edge_router.clone());
                     }
                     let server = AxumServer::new(http.bind, router)?;
                     let endpoint = server.endpoint()?;
@@ -364,4 +433,14 @@ struct HttpServerConfig {
     bind: SocketAddr,
     #[serde(default)]
     route_packs: Vec<String>,
+}
+
+/// The built-in `"crud"` api pack: the storage line's HTTP edge
+/// (`rushwind-storage-axum`'s [`CrudApi`]) bound to the configured
+/// repository. Expects the schema's column fields as JSON in and out.
+fn crud_api_pack(input: RouteInput) -> Result<Router, BootstrapError> {
+    let repo = input.repository.ok_or_else(|| {
+        BootstrapError::Failed("crud api pack requires a configured storage".to_string())
+    })?;
+    Ok(CrudApi::new(repo).router())
 }

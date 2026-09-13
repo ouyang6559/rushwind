@@ -15,6 +15,7 @@ rushwind-core = { workspace = true }
 rushwind-transport = { workspace = true }
 rushwind-transport-axum = { workspace = true }
 rushwind-storage = { workspace = true }
+rushwind-storage-axum = { workspace = true }
 axum = { version = "0.8", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

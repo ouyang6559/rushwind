@@ -22,6 +22,9 @@ app:
 storage:
   engine: memory
   settings: {}
+storage_endpoints:
+  - nest: /widgets
+    api: crud
 servers:
   - kind: http
     bind: 127.0.0.1:0
@@ -76,6 +79,28 @@ async fn http_get(addr: SocketAddr, path: &str) -> String {
         .write_all(
             format!("GET {path} HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n").as_bytes(),
         )
+        .await
+        .expect("write must succeed");
+    let mut buf = Vec::new();
+    stream
+        .read_to_end(&mut buf)
+        .await
+        .expect("read must complete");
+    String::from_utf8(buf).expect("response must be utf-8")
+}
+
+/// A raw HTTP request with an optional JSON body; returns the full
+/// response text.
+async fn http_send(addr: SocketAddr, method: &str, path: &str, body: &str) -> String {
+    let mut stream = tokio::net::TcpStream::connect(addr)
+        .await
+        .expect("connect must succeed");
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream
+        .write_all(request.as_bytes())
         .await
         .expect("write must succeed");
     let mut buf = Vec::new();
@@ -188,4 +213,51 @@ async fn malformed_yaml_is_a_config_error() {
     let error =
         Bootstrap::from_yaml_str("app: [unclosed").expect_err("malformed yaml must fail at parse");
     assert!(matches!(error, BootstrapError::Config(_)));
+}
+
+#[tokio::test]
+async fn storage_endpoint_serves_crud_over_http() {
+    let bootstrapped = register_packs(register_memory_engine(
+        Bootstrap::from_yaml_str(FLOW_YAML).expect("yaml must parse"),
+    ))
+    .build()
+    .await
+    .expect("assembly must succeed");
+    let addr: SocketAddr = bootstrapped.endpoints[0]
+        .trim_start_matches("http://")
+        .parse()
+        .expect("endpoint must be host:port");
+
+    let app = Arc::new(bootstrapped.app);
+    let trigger = StopSignal::new();
+    let run_trigger = trigger.clone();
+    let run = tokio::spawn(async move { app.run(run_trigger).await });
+    sleep(Duration::from_millis(200)).await;
+
+    // The nested crud edge serves the suite schema: a create over real
+    // HTTP lands in the configured storage and reads back.
+    let created = timeout(
+        Duration::from_secs(5),
+        http_send(addr, "POST", "/widgets", r#"{"name":"bolt"}"#),
+    )
+    .await
+    .expect("create must respond");
+    assert!(created.contains("201"), "create must return 201: {created}");
+
+    let listed = timeout(Duration::from_secs(5), http_get(addr, "/widgets"))
+        .await
+        .expect("list must respond");
+    assert!(listed.contains("200"), "list must return 200: {listed}");
+    assert!(
+        listed.contains("bolt"),
+        "created row must be listed: {listed}"
+    );
+
+    // Lifecycle shutdown returns a clean outcome.
+    trigger.signal();
+    let outcome = timeout(Duration::from_secs(5), run)
+        .await
+        .expect("run must finish")
+        .expect("run task must not panic");
+    assert!(outcome.is_ok());
 }
