@@ -123,6 +123,16 @@ jobs:
         env:
           CASSANDRA_HOSTS: 127.0.0.1:9042
 
+      - name: Start OpenSearch (single node, security off)
+        run: |
+          docker run -d --name opensearch -p 9201:9200 -e discovery.type=single-node -e DISABLE_SECURITY_PLUGIN=true opensearchproject/opensearch:2
+          sleep 45
+
+      - name: OpenSearch suite
+        run: cargo test -p rushwind-storage-opensearch --features live
+        env:
+          OPENSEARCH_URL: http://localhost:9201
+
   registry-integration:
     name: registry conformance (live etcd)
     runs-on: ubuntu-latest

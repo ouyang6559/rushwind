@@ -3339,6 +3339,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-storage-opensearch"
+version = "0.0.1"
+dependencies = [
+ "reqwest",
+ "rushwind-storage",
+ "rushwind-storage-elasticsearch",
+ "rushwind-testkit",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-storage-proto"
 version = "0.0.1"
 dependencies = [

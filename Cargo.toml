@@ -44,6 +44,7 @@ mongodb = "3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 rushwind-storage-elasticsearch = { path = "crates/rushwind-storage-elasticsearch", version = "0.0.1" }
 rushwind-storage-cassandra = { path = "crates/rushwind-storage-cassandra", version = "0.0.1" }
+rushwind-storage-opensearch = { path = "crates/rushwind-storage-opensearch", version = "0.0.1" }
 scylla = "1"
 
 # Protobuf wire contract: types are generated from proto/rushwind/storage/v1
