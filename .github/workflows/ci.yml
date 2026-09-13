@@ -280,6 +280,11 @@ jobs:
           docker run -d --name emqx -p 1883:1883 emqx:latest
           for i in $(seq 1 60); do curl -fsS http://localhost:18083/ >/dev/null 2>&1 && break; sleep 2; done
 
+      - name: Start redis
+        run: |
+          docker run -d --name broker-redis -p 6379:6379 redis:latest
+          for i in $(seq 1 30); do docker exec broker-redis redis-cli ping 2>/dev/null | grep -q PONG && break; sleep 2; done
+
       - name: Mqtt suite
         run: |
           cargo test -p rushwind-broker-mqtt --features live -- --nocapture 2>&1 | tee /tmp/mqtt-suite.log
@@ -287,6 +292,13 @@ jobs:
         env:
           BROKER_MQTT_ADDRESS: 127.0.0.1:1883
 
+      - name: Redis suite
+        run: |
+          cargo test -p rushwind-broker-redis --features live -- --nocapture 2>&1 | tee /tmp/redis-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          BROKER_REDIS_URL: redis://127.0.0.1:6379
+
       - name: Report suite failure detail
         if: failure()
-        run: grep -h "panicked at\|must succeed\|mqtt" /tmp/mqtt-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
+        run: grep -h "panicked at\|must succeed\|mqtt\|redis" /tmp/mqtt-suite.log /tmp/redis-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
