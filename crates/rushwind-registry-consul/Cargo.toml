@@ -1,0 +1,24 @@
+[package]
+name = "rushwind-registry-consul"
+description = "Consul adapter for the RushWind registry contract: registration and discovery over the agent HTTP API."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Live consul suite (via CONSUL_HTTP_ADDR); run by CI's
+# registry-integration job against a service container.
+live = []
+
+[dependencies]
+rushwind-transport = { workspace = true }
+rushwind-registry = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
