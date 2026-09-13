@@ -155,9 +155,9 @@ jobs:
           CLICKHOUSE_URL: http://rushwind:rushwind@localhost:8123
 
   registry-integration:
-    name: registry conformance (live etcd)
+    name: registry conformance (live backends)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -177,6 +177,27 @@ jobs:
           sleep 5
           curl -fsS http://localhost:2379/health
 
+      - name: Start consul
+        run: |
+          docker run -d --name consul -p 8500:8500 hashicorp/consul:1.21 consul agent -dev -client=0.0.0.0
+          sleep 5
+          curl -fsS http://localhost:8500/v1/status/leader
+
+      - name: Start zookeeper
+        run: |
+          docker run -d --name zookeeper -p 2181:2181 zookeeper:3.9
+          sleep 10
+
+      - name: Start nacos
+        run: |
+          docker run -d --name nacos -e MODE=standalone -e NACOS_AUTH_ENABLE=false -e JVM_XMS=256m -e JVM_XMX=256m -p 8848:8848 -p 9848:9848 nacos/nacos-server:v2.3.2
+          for i in $(seq 1 60); do curl -fsS http://localhost:8848/nacos/ >/dev/null 2>&1 && break; sleep 5; done
+
+      - name: Start eureka
+        run: |
+          docker run -d --name eureka -p 8761:8761 steeltoeoss/eureka-server:latest
+          for i in $(seq 1 60); do curl -fsS http://localhost:8761/ >/dev/null 2>&1 && break; sleep 5; done
+
       - name: Etcd suite
         run: |
           cargo test -p rushwind-registry-etcd --features live -- --nocapture 2>&1 | tee /tmp/etcd-suite.log
@@ -184,6 +205,36 @@ jobs:
         env:
           REGISTRY_ETCD_ENDPOINT: http://localhost:2379
 
+      - name: Consul suite
+        run: |
+          cargo test -p rushwind-registry-consul --features live -- --nocapture 2>&1 | tee /tmp/consul-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          CONSUL_HTTP_ADDR: http://127.0.0.1:8500
+
+      - name: Zookeeper suite
+        run: |
+          cargo test -p rushwind-registry-zookeeper --features live -- --nocapture 2>&1 | tee /tmp/zookeeper-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          REGISTRY_ZOOKEEPER_ADDRESS: 127.0.0.1:2181
+
+      - name: Nacos suite
+        run: |
+          cargo test -p rushwind-registry-nacos --features live -- --nocapture 2>&1 | tee /tmp/nacos-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          REGISTRY_NACOS_ADDRESS: 127.0.0.1:8848
+
+      - name: Eureka suite
+        run: |
+          cargo test -p rushwind-registry-eureka --features live -- --nocapture 2>&1 | tee /tmp/eureka-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          REGISTRY_EUREKA_ADDRESS: http://127.0.0.1:8761
+
       - name: Report suite failure detail
         if: failure()
-        run: grep -h "panicked at\|register must\|etcd" /tmp/etcd-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
+        run: |
+          grep -h "panicked at\|register must\|etcd\|consul\|zookeeper\|nacos\|eureka" /tmp/etcd-suite.log /tmp/consul-suite.log /tmp/zookeeper-suite.log /tmp/nacos-suite.log /tmp/eureka-suite.log 2>/dev/null \
+            | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
