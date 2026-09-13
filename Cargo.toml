@@ -29,6 +29,8 @@ rushwind-registry-kubernetes = { path = "crates/rushwind-registry-kubernetes", v
 rushwind-registry-eureka = { path = "crates/rushwind-registry-eureka", version = "0.0.1" }
 rushwind-registry-servicecomb = { path = "crates/rushwind-registry-servicecomb", version = "0.0.1" }
 rushwind-registry-polaris = { path = "crates/rushwind-registry-polaris", version = "0.0.1" }
+rushwind-broker = { path = "crates/rushwind-broker", version = "0.0.1" }
+rushwind-broker-mqtt = { path = "crates/rushwind-broker-mqtt", version = "0.0.1" }
 rushwind-authn = { path = "crates/rushwind-authn", version = "0.0.1" }
 rushwind-authn-apikey = { path = "crates/rushwind-authn-apikey", version = "0.0.1" }
 rushwind-authn-basicauth = { path = "crates/rushwind-authn-basicauth", version = "0.0.1" }
