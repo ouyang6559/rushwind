@@ -32,6 +32,9 @@ rushwind-registry-polaris = { path = "crates/rushwind-registry-polaris", version
 rushwind-broker = { path = "crates/rushwind-broker", version = "0.0.1" }
 rushwind-broker-mqtt = { path = "crates/rushwind-broker-mqtt", version = "0.0.1" }
 rushwind-broker-redis = { path = "crates/rushwind-broker-redis", version = "0.0.1" }
+rushwind-broker-nats = { path = "crates/rushwind-broker-nats", version = "0.0.1" }
+rushwind-broker-rabbitmq = { path = "crates/rushwind-broker-rabbitmq", version = "0.0.1" }
+rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.1" }
 rushwind-authn = { path = "crates/rushwind-authn", version = "0.0.1" }
 rushwind-authn-apikey = { path = "crates/rushwind-authn-apikey", version = "0.0.1" }
 rushwind-authn-basicauth = { path = "crates/rushwind-authn-basicauth", version = "0.0.1" }

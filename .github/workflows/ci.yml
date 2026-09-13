@@ -285,6 +285,17 @@ jobs:
           docker run -d --name broker-redis -p 6379:6379 redis:latest
           for i in $(seq 1 30); do docker exec broker-redis redis-cli ping 2>/dev/null | grep -q PONG && break; sleep 2; done
 
+      - name: Start nats
+        run: |
+          docker run -d --name broker-nats -p 4222:4222 nats:latest
+          sleep 5
+
+      - name: Start rabbitmq
+        run: |
+          docker run -d --name broker-rabbitmq -p 5672:5672 -p 61613:61613 rabbitmq:latest
+          docker exec broker-rabbitmq rabbitmq-plugins enable rabbitmq_stomp
+          sleep 10
+
       - name: Mqtt suite
         run: |
           cargo test -p rushwind-broker-mqtt --features live -- --nocapture 2>&1 | tee /tmp/mqtt-suite.log
@@ -298,6 +309,27 @@ jobs:
           exit ${PIPESTATUS[0]}
         env:
           BROKER_REDIS_URL: redis://127.0.0.1:6379
+
+      - name: Nats suite
+        run: |
+          cargo test -p rushwind-broker-nats --features live -- --nocapture 2>&1 | tee /tmp/nats-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          BROKER_NATS_ADDRESS: nats://127.0.0.1:4222
+
+      - name: Rabbitmq suite
+        run: |
+          cargo test -p rushwind-broker-rabbitmq --features live -- --nocapture 2>&1 | tee /tmp/rabbitmq-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          BROKER_RABBITMQ_URL: amqp://guest:guest@127.0.0.1:5672
+
+      - name: Stomp suite
+        run: |
+          cargo test -p rushwind-broker-stomp --features live -- --nocapture 2>&1 | tee /tmp/stomp-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          BROKER_STOMP_ADDRESS: 127.0.0.1:61613
 
       - name: Report suite failure detail
         if: failure()
