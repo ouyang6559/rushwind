@@ -8,7 +8,7 @@
 /// repository and shared verbatim with the Go implementation (`go-wind`).
 /// Serialization adapters must be built against that spec and validated with
 /// its golden vectors.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Instance {
     /// Application identifier of the owning service.
     pub id: String,

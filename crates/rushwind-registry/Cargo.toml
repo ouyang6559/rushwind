@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-registry"
-description = "Registration-only registry contract for RushWind services: Registrar trait, the extracted go-wind wire format, and key layout."
+description = "Registry contract for RushWind services: Registrar and Discovery traits, the extracted go-wind wire format and key layouts."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
