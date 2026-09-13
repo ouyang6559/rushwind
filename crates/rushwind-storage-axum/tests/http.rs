@@ -308,3 +308,40 @@ async fn viewer_hook_scopes_every_request() {
         "a scoped viewer sees only its own rows at the HTTP edge"
     );
 }
+
+/// Counts create events — the audit sink wired through the HTTP layer.
+#[derive(Default)]
+struct RecordingAuditor {
+    creates: std::sync::Mutex<Vec<String>>,
+}
+
+impl rushwind_storage::Auditor for RecordingAuditor {
+    fn record(&self, entry: rushwind_storage::AuditEntry) {
+        if entry.action == rushwind_storage::AuditAction::Create {
+            let name = entry.target.map(|_| "row".to_string()).unwrap_or_default();
+            self.creates.lock().expect("log").push(name);
+        }
+    }
+}
+
+#[tokio::test]
+async fn auditor_hook_receives_mutation_entries() {
+    let auditor = Arc::new(RecordingAuditor::default());
+    let repo = MemoryRepo::new(schema()).expect("schema is valid");
+    let app = CrudApi::new(Arc::new(repo))
+        .with_auditor(auditor.clone() as Arc<dyn rushwind_storage::Auditor>)
+        .router();
+
+    send_json(
+        &app,
+        "POST",
+        "/",
+        json!({"name": "logged", "age": 1, "score": null, "owner_id": 1, "unit_id": 1}),
+    )
+    .await;
+    assert_eq!(
+        auditor.creates.lock().expect("log").len(),
+        1,
+        "a create through HTTP must reach the wired audit sink"
+    );
+}

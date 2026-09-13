@@ -15,5 +15,12 @@ workspace = true
 rushwind-core = { workspace = true }
 rushwind-transport = { workspace = true }
 rushwind-transport-axum = { workspace = true }
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+rushwind-storage = { workspace = true }
+rushwind-storage-memory = { workspace = true }
+rushwind-storage-soft-delete = { workspace = true }
+rushwind-storage-cache = { workspace = true }
+rushwind-storage-observe = { workspace = true }
+rushwind-storage-axum = { workspace = true }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

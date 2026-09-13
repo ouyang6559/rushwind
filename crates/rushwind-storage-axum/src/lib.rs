@@ -54,7 +54,8 @@ use axum::{Json, Router};
 use serde_json::json;
 
 use rushwind_storage::{
-    FilterExpr, ListQuery, Paging, QueryCtx, Repository, Sort, SortDir, StorageError, Value, Viewer,
+    Auditor, FilterExpr, ListQuery, Paging, QueryCtx, Repository, Sort, SortDir, StorageError,
+    Value, Viewer,
 };
 use rushwind_storage_proto::wire::list_query_from_json;
 
@@ -66,18 +67,30 @@ pub type ViewerFn = Arc<dyn Fn(&HeaderMap) -> Viewer + Send + Sync>;
 pub struct CrudApi {
     repo: Arc<dyn Repository>,
     viewer: Option<ViewerFn>,
+    auditor: Option<Arc<dyn Auditor>>,
 }
 
 impl CrudApi {
     /// Binds the surface to a repository; every request runs all-access.
     pub fn new(repo: Arc<dyn Repository>) -> Self {
-        Self { repo, viewer: None }
+        Self {
+            repo,
+            viewer: None,
+            auditor: None,
+        }
     }
 
     /// Installs the tenancy policy — headers to viewer, enforced on every
     /// call by the engine underneath.
     pub fn with_viewer(mut self, viewer: ViewerFn) -> Self {
         self.viewer = Some(viewer);
+        self
+    }
+
+    /// Attaches the audit sink mutations flow into (the contract's
+    /// [`Auditor`] hook, fed by the engine on every write).
+    pub fn with_auditor(mut self, auditor: Arc<dyn Auditor>) -> Self {
+        self.auditor = Some(auditor);
         self
     }
 
@@ -98,7 +111,10 @@ impl CrudApi {
             .as_ref()
             .map(|policy| policy(headers))
             .unwrap_or_else(Viewer::all);
-        QueryCtx::new(viewer)
+        match &self.auditor {
+            Some(auditor) => QueryCtx::new(viewer).audited(Arc::clone(auditor)),
+            None => QueryCtx::new(viewer),
+        }
     }
 }
 

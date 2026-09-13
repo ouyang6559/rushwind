@@ -260,8 +260,15 @@ version = "0.0.1"
 dependencies = [
  "axum 0.8.9",
  "rushwind-core",
+ "rushwind-storage",
+ "rushwind-storage-axum",
+ "rushwind-storage-cache",
+ "rushwind-storage-memory",
+ "rushwind-storage-observe",
+ "rushwind-storage-soft-delete",
  "rushwind-transport",
  "rushwind-transport-axum",
+ "serde_json",
  "tokio",
 ]
 
