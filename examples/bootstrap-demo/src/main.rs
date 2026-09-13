@@ -1,9 +1,11 @@
 //! Config-driven assembly demo.
 //!
 //! One YAML document assembles a storage engine (memory, with the schema
-//! captured in the factory closure) and an HTTP server with two route
-//! packs, all under the RushWind lifecycle. `GET /health` is static;
-//! `GET /wired` proves the configured storage reached the route pack.
+//! captured in the factory closure), a CRUD HTTP edge over it, and an
+//! HTTP server with two route packs, all under the RushWind lifecycle.
+//! `GET /health` is static; `GET /wired` proves the configured storage
+//! reached the route pack; `POST/GET /widgets` is the storage line's
+//! working CRUD edge.
 //!
 //! Try it: `cargo run -p bootstrap-demo`, then
 //! `curl http://<printed-endpoint>/health` and `/wired`, then Ctrl+C.
@@ -27,6 +29,9 @@ app:
 storage:
   engine: memory
   settings: {}
+storage_endpoints:
+  - nest: /widgets
+    api: crud
 servers:
   - kind: http
     bind: 127.0.0.1:0
@@ -74,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("[demo] serving on {endpoint}");
     }
     println!(
-        "[demo] storage configured: {}",
+        "[demo] storage configured: {}; crud edge at /widgets",
         bootstrapped.repository.is_some()
     );
 

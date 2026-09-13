@@ -10,6 +10,11 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Live etcd suite (via REGISTRY_ETCD_ENDPOINT); run by CI's
+# registry-integration job against a service container.
+live = []
+
 [dependencies]
 rushwind-transport = { workspace = true }
 rushwind-registry = { workspace = true }

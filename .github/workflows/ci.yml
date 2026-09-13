@@ -92,3 +92,29 @@ jobs:
         run: cargo test -p rushwind-storage-mongodb --features live
         env:
           MONGODB_URI: mongodb://localhost:27017
+
+  registry-integration:
+    name: registry conformance (live etcd)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      etcd:
+        image: quay.io/coreos/etcd:v3.5.16
+        env:
+          ETCD_ADVERTISE_CLIENT_URLS: http://0.0.0.0:2379
+          ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+        ports:
+          - 2379:2379
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Etcd suite
+        run: cargo test -p rushwind-registry-etcd --features live
+        env:
+          REGISTRY_ETCD_ENDPOINT: http://localhost:2379
