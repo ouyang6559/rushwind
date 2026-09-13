@@ -3297,6 +3297,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-storage-influxdb"
+version = "0.0.1"
+dependencies = [
+ "reqwest",
+ "rushwind-storage",
+ "rushwind-testkit",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-storage-macros"
 version = "0.0.1"
 dependencies = [

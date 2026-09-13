@@ -133,6 +133,17 @@ jobs:
         env:
           OPENSEARCH_URL: http://localhost:9201
 
+      - name: Start InfluxDB 1.8
+        run: |
+          docker run -d --name influxdb -p 8086:8086 -e INFLUXDB_DB=rushwind influxdb:1.8-alpine
+          sleep 8
+
+      - name: InfluxDB suite
+        run: cargo test -p rushwind-storage-influxdb --features live
+        env:
+          INFLUXDB_URL: http://localhost:8086
+          INFLUXDB_DB: rushwind
+
   registry-integration:
     name: registry conformance (live etcd)
     runs-on: ubuntu-latest
