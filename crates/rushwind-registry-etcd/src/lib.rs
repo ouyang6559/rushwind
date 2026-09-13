@@ -1,12 +1,21 @@
-//! Etcd registration-only adapter for the RushWind registry contract.
+//! Etcd adapter for the RushWind registry contract — registration and
+//! discovery, ported from `go-wind-plugins/registry/etcd`.
 //!
-//! [`EtcdRegistrar`] announces instances to etcd using the **extracted
-//! go-wind wire contract**: key `{namespace}/{name}/{id}` (namespace
-//! defaults to [`DEFAULT_NAMESPACE`]), value = the go-`json.Marshal`-
-//! compatible instance JSON from [`rushwind_registry::registry_json`],
-//! lease-granted with a TTL (default 15 s) and kept alive by a self-healing
-//! background task that re-grants and re-puts on loss — mirroring the Go
-//! registrar's `heartBeat` goroutine.
+//! Registration announces instances using the **extracted go-wind wire
+//! contract**: key `{namespace}/{name}/{id}` (namespace defaults to
+//! [`DEFAULT_NAMESPACE`]), value = the go-`json.Marshal`-compatible
+//! instance JSON from [`rushwind_registry::registry_json`], lease-granted
+//! with a TTL (default 15 s) and kept alive by a self-healing background
+//! task that re-grants and re-puts on loss — mirroring the Go registrar's
+//! `heartBeat` goroutine.
+//!
+//! Discovery is the Go `Discovery`/`watcher` pair:
+//! [`Discovery::get_service`] reads a service's instance list through the
+//! KV API, and [`Discovery::watch`] establishes a prefix watch whose every
+//! response — including the establishment progress notification —
+//! triggers a full snapshot re-read. A stream that dies, is canceled
+//! server-side, or hits a compaction boundary is rebuilt after a
+//! one-second backoff, mirroring the Go watcher's `reWatch` path.
 //!
 //! # Cancellation
 //!
@@ -16,12 +25,15 @@
 //! cannot await a revoke. [`Registrar::deregister`] deletes the key
 //! immediately instead. Both are safe; pick per call site.
 //!
+//! Watchers stop on drop: the watch stream is dropped, which ends the
+//! gRPC stream and releases the server-side watcher.
+//!
 //! # Testing
 //!
 //! The pure parts (key layout, wire JSON) are golden-tested against Go
 //! output in `rushwind-registry`. The gRPC wrapper in this crate is
-//! intentionally thin; exercise it against a live etcd when deploying (no
-//! embedded etcd exists for CI).
+//! intentionally thin; live conformance tests exercise it against a real
+//! etcd via the `live` feature (no embedded etcd exists for CI).
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -31,9 +43,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rushwind_registry::{
-    registry_json, registry_key, BoxFuture, Registrar, Registration, RegistrationHandle,
-    RegistryError, DEFAULT_NAMESPACE,
+    registry_json, registry_key, registry_parse, service_prefix, BoxFuture, Discovery, Registrar,
+    Registration, RegistrationHandle, RegistryError, Watcher, DEFAULT_NAMESPACE,
 };
+use rushwind_transport::Instance;
+use serde::Deserialize;
 
 /// The keepalive refresh cadence: a third of the TTL, so several refresh
 /// attempts fit before expiry.
@@ -53,12 +67,13 @@ struct Inner {
     tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
 }
 
-/// An etcd-backed registrar.
-pub struct EtcdRegistrar {
+/// An etcd-backed registry: registration and discovery over one client,
+/// the port of the Go `registry.Registry` type.
+pub struct EtcdRegistry {
     inner: Arc<Inner>,
 }
 
-impl EtcdRegistrar {
+impl EtcdRegistry {
     /// Connects to etcd at `endpoints` with the default namespace and a
     /// 15 s lease TTL.
     pub async fn connect<E>(endpoints: &[E]) -> Result<Self, RegistryError>
@@ -89,9 +104,35 @@ impl EtcdRegistrar {
             }),
         })
     }
+
+    /// Constructs from the bootstrap factory's settings wire shape:
+    /// `endpoints` (required), `namespace` (default
+    /// [`DEFAULT_NAMESPACE`]), `ttl` seconds (default 15).
+    pub async fn from_settings(settings: serde_json::Value) -> Result<Self, RegistryError> {
+        let settings: EtcdSettings = serde_json::from_value(settings)
+            .map_err(|e| RegistryError::Failed(format!("settings parse: {e}")))?;
+        Self::connect_with(
+            &settings.endpoints,
+            settings.namespace.as_deref().unwrap_or(DEFAULT_NAMESPACE),
+            settings.ttl.unwrap_or(15),
+        )
+        .await
+    }
 }
 
-impl Registrar for EtcdRegistrar {
+/// The bootstrap factory's settings wire shape for
+/// [`EtcdRegistry::from_settings`].
+#[derive(Deserialize)]
+pub struct EtcdSettings {
+    /// The etcd endpoint URLs.
+    pub endpoints: Vec<String>,
+    /// The key namespace. Default: [`DEFAULT_NAMESPACE`].
+    pub namespace: Option<String>,
+    /// The lease TTL, in seconds. Default: 15.
+    pub ttl: Option<i64>,
+}
+
+impl Registrar for EtcdRegistry {
     fn register<'a>(
         &'a self,
         registration: Registration,
@@ -186,6 +227,99 @@ impl Registrar for EtcdRegistrar {
     }
 }
 
+impl Discovery for EtcdRegistry {
+    fn get_service<'a>(
+        &'a self,
+        service_name: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<Instance>, RegistryError>> {
+        Box::pin(async move {
+            let prefix = service_prefix(&self.inner.namespace, service_name);
+            let mut client = self.inner.client.lock().await;
+            read_instances(&mut client, &prefix, service_name).await
+        })
+    }
+
+    fn watch<'a>(
+        &'a self,
+        service_name: &'a str,
+    ) -> BoxFuture<'a, Result<Box<dyn Watcher>, RegistryError>> {
+        Box::pin(async move {
+            let prefix = service_prefix(&self.inner.namespace, service_name);
+            let mut client = self.inner.client.lock().await.clone();
+            let stream = open_watch(&mut client, &prefix).await?;
+            Ok(Box::new(EtcdWatcher {
+                client,
+                prefix,
+                service_name: service_name.to_string(),
+                first: true,
+                stream: Some(stream),
+            }) as Box<dyn Watcher>)
+        })
+    }
+}
+
+/// The etcd-backed [`Watcher`]: a prefix watch whose every response —
+/// including the establishment progress notification — triggers a full
+/// snapshot re-read through the KV API, mirroring the Go watcher's
+/// `Next`/`getInstance` pair. A dead, canceled, or compacted stream is
+/// rebuilt after a one-second backoff, mirroring its `reWatch` path.
+struct EtcdWatcher {
+    /// A private client handle, cloned at watch creation so snapshot
+    /// reads never contend on the registry's client lock.
+    client: etcd_client::Client,
+    /// The watched prefix: `{namespace}/{name}`.
+    prefix: String,
+    /// The name filter applied to parsed instances.
+    service_name: String,
+    /// Whether the next snapshot is the establishment snapshot.
+    first: bool,
+    /// The watch stream; `None` once stopped.
+    stream: Option<etcd_client::WatchStream>,
+}
+
+impl Watcher for EtcdWatcher {
+    fn next<'a>(&'a mut self) -> BoxFuture<'a, Result<Vec<Instance>, RegistryError>> {
+        Box::pin(async move {
+            if self.first {
+                self.first = false;
+                return read_instances(&mut self.client, &self.prefix, &self.service_name).await;
+            }
+            let message = match self.stream.as_mut() {
+                Some(stream) => stream.message().await,
+                None => {
+                    return Err(RegistryError::Failed(
+                        "watcher stopped: stream already released".to_string(),
+                    ))
+                }
+            };
+            let healthy = match message {
+                Ok(Some(response)) => !response.canceled() && response.compact_revision() == 0,
+                _ => false,
+            };
+            if !healthy {
+                // The stream died, was canceled server-side, or hit a
+                // compaction boundary — the cases the Go watcher's channel
+                // closes on. Rebuild after the backoff, then re-read.
+                self.stream = None;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let stream = open_watch(&mut self.client, &self.prefix).await?;
+                self.stream = Some(stream);
+            }
+            read_instances(&mut self.client, &self.prefix, &self.service_name).await
+        })
+    }
+
+    fn stop(&mut self) {
+        self.stream = None;
+    }
+}
+
+impl Drop for EtcdWatcher {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 /// Grants a lease and puts `value` at `key`, bound to the lease.
 async fn grant_and_put(
     client: &mut etcd_client::Client,
@@ -207,4 +341,49 @@ async fn grant_and_put(
         .await
         .map_err(|e| RegistryError::Failed(format!("etcd put {key}: {e}")))?;
     Ok(lease_id)
+}
+
+/// Reads the full instance list for `prefix` through the KV API, keeping
+/// only entries whose parsed name matches — the prefix over-matches
+/// sibling service names (`order` also covers `order-service`), so the
+/// parsed-name filter is load-bearing, exactly like the Go discovery's
+/// `GetService`.
+async fn read_instances(
+    client: &mut etcd_client::Client,
+    prefix: &str,
+    service_name: &str,
+) -> Result<Vec<Instance>, RegistryError> {
+    let response = client
+        .get(prefix, Some(etcd_client::GetOptions::new().with_prefix()))
+        .await
+        .map_err(|e| RegistryError::Failed(format!("etcd get prefix {prefix}: {e}")))?;
+    let mut instances = Vec::new();
+    for kv in response.kvs() {
+        let value = kv.value_str().map_err(|e| {
+            RegistryError::Failed(format!("etcd get prefix {prefix}: non-utf8 value: {e}"))
+        })?;
+        let instance = registry_parse(value)?;
+        if instance.name != service_name {
+            continue;
+        }
+        instances.push(instance);
+    }
+    Ok(instances)
+}
+
+/// Establishes the prefix watch on `prefix` and requests an immediate
+/// progress notification — the exact setup the Go watcher performs at
+/// creation, verifying stream liveness before the first snapshot read.
+async fn open_watch(
+    client: &mut etcd_client::Client,
+    prefix: &str,
+) -> Result<etcd_client::WatchStream, RegistryError> {
+    let mut stream = client
+        .watch(prefix, Some(etcd_client::WatchOptions::new().with_prefix()))
+        .await
+        .map_err(|e| RegistryError::Failed(format!("etcd watch {prefix}: {e}")))?;
+    stream.request_progress().await.map_err(|e| {
+        RegistryError::Failed(format!("etcd watch {prefix}: request progress: {e}"))
+    })?;
+    Ok(stream)
 }
