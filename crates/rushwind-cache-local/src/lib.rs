@@ -223,14 +223,11 @@ impl Cache for LocalCache {
 /// Reads an entry, dropping it when expired — FreeCache's read-time
 /// expiration.
 fn read_entry(entries: &mut HashMap<String, Entry>, key: &str) -> Option<Vec<u8>> {
-    let expired = match entries.get(key) {
-        Some(entry) => entry
-            .expires_at
-            .map(|at| Instant::now() >= at)
-            .unwrap_or(false),
-        None => return None,
-    };
-    if expired {
+    if entries
+        .get(key)
+        .and_then(|entry| entry.expires_at.map(|at| Instant::now() >= at))
+        .unwrap_or(false)
+    {
         entries.remove(key);
         return None;
     }
