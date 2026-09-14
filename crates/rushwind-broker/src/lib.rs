@@ -19,9 +19,23 @@
 //! the native ack into the event; engines with implicit acknowledgment
 //! (MQTT) leave it a no-op, exactly as the Go mqtt publication does.
 //! Go's `Metadata map[string]any` narrows to string values — the
-//! native broker metadata surfaces are string-typed. Go's
-//! `Msg any` native-handle slot has no equivalent: engines expose what
+//! native broker metadata surfaces are string-typed. Go's `Msg any`
+//! native-handle slot has no equivalent: engines expose what
 //! their delivery actually needs through the event.
+//!
+//! Go's `Broker.Request` survives as [`Broker::request`]: a default
+//! trait method returning the not-implemented error — the shape of
+//! every Go engine without a native request-reply surface — which
+//! engines with one (NATS) override.
+//!
+//! # Middleware
+//!
+//! Go's `PublishMiddleware`/`SubscriberMiddleware` chains — carried on
+//! the Go broker options — survive as [`MiddlewareBroker`], a decorator
+//! that runs the chains around another broker. The chain semantics are
+//! the Go ones the Go chain tests pin: middlewares apply backward, so
+//! the first-registered middleware is the outermost wrapper and runs
+//! first.
 //!
 //! # Engines
 //!
@@ -213,6 +227,170 @@ pub trait Broker: Send + Sync {
         topic: &'a str,
         handler: Handler,
     ) -> BoxFuture<'a, Result<Box<dyn Subscriber>, BrokerError>>;
+
+    /// Sends a request and awaits a response — the Go
+    /// `Broker.Request`. This default is the Go stub shape: every
+    /// engine without a native request-reply surface returns the
+    /// not-implemented error; engines with one override this.
+    fn request<'a>(
+        &'a self,
+        topic: &'a str,
+        message: Message,
+    ) -> BoxFuture<'a, Result<Message, BrokerError>> {
+        let _ = (topic, message);
+        Box::pin(async {
+            Err(BrokerError::Failed(
+                "request not implemented by this engine".to_string(),
+            ))
+        })
+    }
+}
+
+/// The publish-call surface a [`PublishMiddleware`] wraps — the Go
+/// `PublishHandler` reshaped: engine publish futures borrow their
+/// brokers, so the wrapped call is a by-reference trait object
+/// rather than an `Fn` returning `'static` futures.
+pub trait PublishCall: Send + Sync {
+    /// Performs the wrapped publish.
+    fn call<'a>(
+        &'a self,
+        topic: &'a str,
+        message: Message,
+    ) -> BoxFuture<'a, Result<(), BrokerError>>;
+}
+
+/// Wraps a publish-call surface — the Go `PublishMiddleware`,
+/// polymorphic over the wrapped surface's object lifetime.
+pub type PublishMiddleware =
+    Arc<dyn for<'x> Fn(Arc<dyn PublishCall + 'x>) -> Arc<dyn PublishCall + 'x> + Send + Sync>;
+
+/// Chains publish middlewares around a base surface — the Go
+/// `ChainPublishMiddleware` semantics its test pins: middlewares apply
+/// backward, so the first-registered middleware is the outermost
+/// wrapper and runs first.
+fn chain_publish<'a>(
+    base: Arc<dyn PublishCall + 'a>,
+    middlewares: &[PublishMiddleware],
+) -> Arc<dyn PublishCall + 'a> {
+    let mut handler = base;
+    for middleware in middlewares.iter().rev() {
+        handler = middleware(handler);
+    }
+    handler
+}
+
+/// The [`PublishCall`] view of the wrapped broker's publish — the
+/// chain's innermost element.
+struct BrokerPublishCall<'a, B: Broker> {
+    broker: &'a B,
+}
+
+impl<B: Broker> PublishCall for BrokerPublishCall<'_, B> {
+    fn call<'b>(
+        &'b self,
+        topic: &'b str,
+        message: Message,
+    ) -> BoxFuture<'b, Result<(), BrokerError>> {
+        self.broker.publish(topic, message)
+    }
+}
+
+/// Wraps a subscriber handler — the Go `SubscriberMiddleware`.
+pub type SubscriberMiddleware = Arc<dyn Fn(Handler) -> Handler + Send + Sync>;
+
+/// Chains subscriber middlewares around a handler — the Go
+/// `ChainSubscriberMiddleware` semantics its test pins:
+/// first-registered runs first.
+fn chain_subscriber(base: Handler, middlewares: &[SubscriberMiddleware]) -> Handler {
+    let mut handler = base;
+    for middleware in middlewares.iter().rev() {
+        handler = middleware(handler);
+    }
+    handler
+}
+
+/// A [`Broker`] decorator running publish and subscriber middleware
+/// chains around another broker — the Go options'
+/// `PublishMiddlewares`/`SubscriberMiddlewares`, reshaped from
+/// constructor options into a composable layer: the wrapped broker
+/// stays untouched, the chains apply only through the decorator, and
+/// every non-publish/non-subscribe call delegates unchanged.
+///
+/// The chains follow the Go order its chain tests pin: the
+/// first-registered middleware is the outermost wrapper and runs
+/// first.
+pub struct MiddlewareBroker<B: Broker> {
+    inner: Arc<B>,
+    publish_middlewares: Vec<PublishMiddleware>,
+    subscriber_middlewares: Vec<SubscriberMiddleware>,
+}
+
+impl<B: Broker> MiddlewareBroker<B> {
+    /// Wraps `inner`: publishes made through the decorator run
+    /// through the publish chain, handlers subscribed through it
+    /// through the subscriber chain.
+    pub fn new(
+        inner: Arc<B>,
+        publish_middlewares: Vec<PublishMiddleware>,
+        subscriber_middlewares: Vec<SubscriberMiddleware>,
+    ) -> Self {
+        Self {
+            inner,
+            publish_middlewares,
+            subscriber_middlewares,
+        }
+    }
+}
+
+impl<B: Broker> Broker for MiddlewareBroker<B> {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn connect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
+        let inner = Arc::clone(&self.inner);
+        Box::pin(async move { inner.connect().await })
+    }
+
+    fn disconnect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
+        let inner = Arc::clone(&self.inner);
+        Box::pin(async move { inner.disconnect().await })
+    }
+
+    fn publish<'a>(
+        &'a self,
+        topic: &'a str,
+        message: Message,
+    ) -> BoxFuture<'a, Result<(), BrokerError>> {
+        let base: Arc<dyn PublishCall + 'a> = Arc::new(BrokerPublishCall {
+            broker: self.inner.as_ref(),
+        });
+        let chained = chain_publish(base, &self.publish_middlewares);
+        // The block owns the chained surfaces (their Arcs); every
+        // borrow the nested calls take closes inside it.
+        Box::pin(async move { chained.call(topic, message).await })
+    }
+
+    fn subscribe<'a>(
+        &'a self,
+        topic: &'a str,
+        handler: Handler,
+    ) -> BoxFuture<'a, Result<Box<dyn Subscriber>, BrokerError>> {
+        let inner = Arc::clone(&self.inner);
+        let chained = chain_subscriber(handler, &self.subscriber_middlewares);
+        Box::pin(async move { inner.subscribe(topic, chained).await })
+    }
+
+    fn request<'a>(
+        &'a self,
+        topic: &'a str,
+        message: Message,
+    ) -> BoxFuture<'a, Result<Message, BrokerError>> {
+        // Go leaves Request unwrapped by the publish chain; the
+        // decorator delegates it unchanged.
+        let inner = Arc::clone(&self.inner);
+        Box::pin(async move { inner.request(topic, message).await })
+    }
 }
 
 /// Builds a JSON-encoded [`Message`] from any serializable value —
@@ -311,5 +489,228 @@ mod tests {
             message.metadata.get("kind").map(String::as_str),
             Some("demo")
         );
+    }
+
+    /// The default [`Broker::request`] returns the Go stubs'
+    /// not-implemented error.
+    #[tokio::test]
+    async fn default_request_is_not_implemented() {
+        let broker = MiddlewareBroker::new(Arc::new(NullBroker), vec![], vec![]);
+        let result = broker.request("topic", Message::from_payload(vec![])).await;
+        assert!(
+            matches!(result, Err(BrokerError::Failed(_))),
+            "default request must be the not-implemented error, got {result:?}"
+        );
+    }
+
+    /// The middleware chains apply backward — the first-registered
+    /// middleware is the outermost wrapper and runs first, wrapping
+    /// the base handler last — the order the Go
+    /// ChainXxxMiddleware tests pin.
+    #[tokio::test]
+    async fn middleware_chain_order_is_go_shaped() {
+        let publish_log = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
+        let subscribe_log = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
+
+        // Base publish handler: the wrapped broker.
+        let broker_publish_log = Arc::clone(&publish_log);
+        let broker = Arc::new(RecordingBroker {
+            publish_log: broker_publish_log,
+            subscribe_log: Arc::clone(&subscribe_log),
+        });
+
+        // Publish middlewares p1, p2: each records its marker, then
+        // runs the wrapped call surface.
+        let publish_middlewares: Vec<PublishMiddleware> = [1, 2]
+            .map(|index| {
+                let log = Arc::clone(&publish_log);
+                let marker: &'static str = if index == 1 { "p1" } else { "p2" };
+                let middleware: PublishMiddleware =
+                    Arc::new(move |wrapped| marker_publish_call(wrapped, log.clone(), marker));
+                middleware
+            })
+            .into();
+
+        // Subscriber middlewares s1, s2 wrapping a base handler that
+        // records "s-base".
+        let subscriber_middlewares = [1, 2].map(|index| {
+            let log = Arc::clone(&subscribe_log);
+            let marker: &'static str = if index == 1 { "s1" } else { "s2" };
+            Arc::new(move |handler: Handler| {
+                let log = Arc::clone(&log);
+                Arc::new(move |event: Event| {
+                    let log = Arc::clone(&log);
+                    let handler = Arc::clone(&handler);
+                    Box::pin(async move {
+                        log.lock().unwrap().push(marker);
+                        handler(event).await
+                    }) as BoxFuture<'static, Result<(), BrokerError>>
+                }) as Handler
+            }) as SubscriberMiddleware
+        });
+        let base_subscriber_log = Arc::clone(&subscribe_log);
+        let base_subscriber: Handler = Arc::new(move |_event: Event| {
+            let log = Arc::clone(&base_subscriber_log);
+            Box::pin(async move {
+                log.lock().unwrap().push("s-base");
+                Ok(())
+            }) as BoxFuture<'static, Result<(), BrokerError>>
+        });
+
+        let decorated =
+            MiddlewareBroker::new(broker, publish_middlewares, subscriber_middlewares.into());
+
+        // The publish chain: p1 (first-registered) outermost, then
+        // p2, then the wrapped broker.
+        decorated
+            .publish("topic", Message::from_payload(vec![]))
+            .await
+            .expect("decorated publish");
+        assert_eq!(
+            *publish_log.lock().unwrap(),
+            vec!["p1", "p2", "p-base"],
+            "publish chain runs first-registered middleware first"
+        );
+
+        // The subscriber chain: s1, s2, then the base handler; the
+        // wrapped broker observes only the chained handler.
+        decorated
+            .subscribe("topic", base_subscriber)
+            .await
+            .expect("decorated subscribe");
+        assert_eq!(
+            *subscribe_log.lock().unwrap(),
+            vec!["base-sub", "s1", "s2", "s-base"],
+            "subscriber chain runs first-registered middleware first"
+        );
+    }
+
+    /// A [`PublishCall`] wrapper recording its marker before
+    /// delegating — the chain-order test's middleware element.
+    struct MarkerPublishCall<'a> {
+        wrapped: Arc<dyn PublishCall + 'a>,
+        log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        marker: &'static str,
+    }
+
+    impl PublishCall for MarkerPublishCall<'_> {
+        fn call<'b>(
+            &'b self,
+            topic: &'b str,
+            message: Message,
+        ) -> BoxFuture<'b, Result<(), BrokerError>> {
+            self.log.lock().unwrap().push(self.marker);
+            self.wrapped.call(topic, message)
+        }
+    }
+
+    /// Builds a [`MarkerPublishCall`] as a publish-call surface — the
+    /// helper gives the middleware closure a concrete
+    /// lifetime-polymorphic signature.
+    fn marker_publish_call<'a>(
+        wrapped: Arc<dyn PublishCall + 'a>,
+        log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        marker: &'static str,
+    ) -> Arc<dyn PublishCall + 'a> {
+        Arc::new(MarkerPublishCall {
+            wrapped,
+            log,
+            marker,
+        })
+    }
+
+    /// The [`Broker`] stub the chain-order test wraps: its publish
+    /// records `p-base`, its subscribe invokes the chained handler and
+    /// records `base-sub`.
+    struct RecordingBroker {
+        publish_log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+        subscribe_log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    impl Broker for RecordingBroker {
+        fn name(&self) -> &'static str {
+            "recording"
+        }
+
+        fn connect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn disconnect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn publish<'a>(
+            &'a self,
+            topic: &'a str,
+            message: Message,
+        ) -> BoxFuture<'a, Result<(), BrokerError>> {
+            let _ = (topic, message);
+            self.publish_log.lock().unwrap().push("p-base");
+            Box::pin(async { Ok(()) })
+        }
+
+        fn subscribe<'a>(
+            &'a self,
+            topic: &'a str,
+            handler: Handler,
+        ) -> BoxFuture<'a, Result<Box<dyn Subscriber>, BrokerError>> {
+            let _ = topic;
+            self.subscribe_log.lock().unwrap().push("base-sub");
+            let chained = handler(Event::new("topic", Message::from_payload(vec![])));
+            Box::pin(async move {
+                chained.await?;
+                Ok(Box::new(NullSubscriber) as Box<dyn Subscriber>)
+            })
+        }
+    }
+
+    /// A [`Broker`] stub with no behavior, for the default-request
+    /// test.
+    struct NullBroker;
+
+    impl Broker for NullBroker {
+        fn name(&self) -> &'static str {
+            "null"
+        }
+
+        fn connect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn disconnect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn publish<'a>(
+            &'a self,
+            topic: &'a str,
+            message: Message,
+        ) -> BoxFuture<'a, Result<(), BrokerError>> {
+            let _ = (topic, message);
+            Box::pin(async { Ok(()) })
+        }
+
+        fn subscribe<'a>(
+            &'a self,
+            topic: &'a str,
+            handler: Handler,
+        ) -> BoxFuture<'a, Result<Box<dyn Subscriber>, BrokerError>> {
+            let _ = (topic, handler);
+            Box::pin(async { Ok(Box::new(NullSubscriber) as Box<dyn Subscriber>) })
+        }
+    }
+
+    /// A [`Subscriber`] stub.
+    struct NullSubscriber;
+
+    impl Subscriber for NullSubscriber {
+        fn topic(&self) -> &str {
+            "null"
+        }
+
+        fn unsubscribe(&mut self) -> BoxFuture<'_, Result<(), BrokerError>> {
+            Box::pin(async { Ok(()) })
+        }
     }
 }

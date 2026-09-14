@@ -19,6 +19,8 @@ rushwind-testkit = { path = "crates/rushwind-testkit", version = "0.0.1" }
 rushwind-transport-axum = { path = "crates/rushwind-transport-axum", version = "0.0.1" }
 rushwind-transport-ws = { path = "crates/rushwind-transport-ws", version = "0.0.1" }
 rushwind-transport-quic = { path = "crates/rushwind-transport-quic", version = "0.0.1" }
+rushwind-transport-webtransport = { path = "crates/rushwind-transport-webtransport", version = "0.0.1" }
+rushwind-transport-h3 = { path = "crates/rushwind-transport-h3", version = "0.0.1" }
 rushwind-transport-mqtt = { path = "crates/rushwind-transport-mqtt", version = "0.0.1" }
 rushwind-registry = { path = "crates/rushwind-registry", version = "0.0.1" }
 rushwind-registry-etcd = { path = "crates/rushwind-registry-etcd", version = "0.0.1" }
@@ -56,6 +58,8 @@ rushwind-config-consul = { path = "crates/rushwind-config-consul", version = "0.
 rushwind-broker-nats = { path = "crates/rushwind-broker-nats", version = "0.0.1" }
 rushwind-broker-rabbitmq = { path = "crates/rushwind-broker-rabbitmq", version = "0.0.1" }
 rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.1" }
+rushwind-broker-kafka = { path = "crates/rushwind-broker-kafka", version = "0.0.1" }
+rushwind-broker-pulsar = { path = "crates/rushwind-broker-pulsar", version = "0.0.1" }
 rushwind-oss = { path = "crates/rushwind-oss", version = "0.0.1" }
 rushwind-oss-s3 = { path = "crates/rushwind-oss-s3", version = "0.0.1" }
 rushwind-ai-openai = { path = "crates/rushwind-ai-openai", version = "0.0.1" }

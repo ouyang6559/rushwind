@@ -16,12 +16,14 @@
 //! no-op, unsubscribing drops the server-side subscription, and a
 //! dropped [`Subscriber`] removes it best-effort.
 //!
+//! Request/reply rides core NATS request semantics — the client
+//! library's managed inbox subscription — and the response carries
+//! the payload only, matching the subscribe path.
+//!
 //! # Divergences from the Go engine
 //!
 //! - The wire metadata has no NATS carrier beyond headers, which the
 //!   Go engine does not set on the default path either.
-//! - Request/reply (`Broker::Request`-style semantics) is not part of
-//!   this slice: core NATS request needs a reply-subject pump.
 //!
 //! # Testing
 //!
@@ -101,6 +103,25 @@ impl Broker for NatsBroker {
                 .publish(topic.to_string(), message.payload.into())
                 .await
                 .map_err(|e| BrokerError::Failed(format!("nats publish: {e}")))
+        })
+    }
+
+    fn request<'a>(
+        &'a self,
+        topic: &'a str,
+        message: Message,
+    ) -> BoxFuture<'a, Result<Message, BrokerError>> {
+        // Core NATS request-reply: the client library manages the
+        // inbox subscription. The response carries the payload only,
+        // like the subscribe path.
+        Box::pin(async move {
+            let response = self
+                .inner
+                .client
+                .request(topic.to_string(), message.payload.into())
+                .await
+                .map_err(|e| BrokerError::Failed(format!("nats request: {e}")))?;
+            Ok(Message::from_payload(response.payload.to_vec()))
         })
     }
 

@@ -1,0 +1,35 @@
+[package]
+name = "rushwind-broker-pulsar"
+description = "Pulsar engine for the RushWind broker contract: per-topic producers through pulsar-rs's multi-topic producer and Shared-type consumers under the Go engine's fixed subscription name."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Live Pulsar suite (via BROKER_PULSAR_ADDRESS); run by CI's broker
+# integration job against a service container.
+live = []
+
+[dependencies]
+rushwind-broker = { workspace = true }
+# pulsar-rs on the tokio runtime only: the crate's default feature
+# set pulls async-std and native-tls, both outside the workspace's
+# no-native-tls stance. compression stays on so messages other
+# clients compressed still decode.
+pulsar = { version = "6.9", default-features = false, features = [
+    "tokio-runtime",
+    "compression",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

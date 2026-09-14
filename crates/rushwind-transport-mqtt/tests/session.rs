@@ -101,3 +101,100 @@ async fn subscribed_messages_reach_the_handler() {
     // A clean lifecycle shutdown while the pump is live.
     finish_lifecycle(trigger, run).await;
 }
+
+/// Per-subscription dispatch: a subscription with a bound handler
+/// receives its own deliveries, one without goes to the default
+/// handler, and a delivery matching no filter reaches neither.
+#[tokio::test]
+async fn per_subscription_handlers_dispatch_by_filter() {
+    let addr = common::broker();
+    let bound_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let default_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let bound_log_for_handler = Arc::clone(&bound_log);
+    let default_log_for_handler = Arc::clone(&default_log);
+
+    let bridge = MqttBridge::builder(addr, "rushwind-bridge-dispatch")
+        .subscribe_with_handler("demo/#", move |message| {
+            let log = Arc::clone(&bound_log_for_handler);
+            async move {
+                log.lock().expect("log poisoned").push(message.topic);
+            }
+        })
+        .subscribe("other/#")
+        .session_handler(move |message| {
+            let log = Arc::clone(&default_log_for_handler);
+            async move {
+                log.lock().expect("log poisoned").push(message.topic);
+            }
+        })
+        .build()
+        .expect("bridge must build");
+    let (trigger, run) = spawn_lifecycle(bridge).await;
+
+    // Let the subscriptions register with the broker before publishing.
+    sleep(Duration::from_millis(300)).await;
+    common::publish(addr, "publisher-2", "demo/bound", b"bound").await;
+    common::publish(addr, "publisher-2", "other/default", b"default").await;
+
+    // The bound handler sees only its filter's deliveries; the
+    // default handler only the unbound subscription's.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        {
+            let bound = bound_log.lock().expect("log poisoned");
+            let default = default_log.lock().expect("log poisoned");
+            if bound.iter().any(|topic| topic == "demo/bound")
+                && default.iter().any(|topic| topic == "other/default")
+            {
+                assert_eq!(bound.len(), 1, "bound handler sees only its filter");
+                assert_eq!(
+                    default.len(),
+                    1,
+                    "default handler sees only the unbound subscription"
+                );
+                break;
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "per-subscription deliveries must arrive"
+        );
+        sleep(Duration::from_millis(50)).await;
+    }
+
+    // A topic matching no filter: neither handler may see it.
+    common::publish(addr, "publisher-2", "unmatched/topic", b"nothing").await;
+    sleep(Duration::from_millis(300)).await;
+    assert!(
+        !bound_log
+            .lock()
+            .expect("log poisoned")
+            .iter()
+            .any(|topic| topic == "unmatched/topic"),
+        "unmatched topic must not reach the bound handler"
+    );
+    assert!(
+        !default_log
+            .lock()
+            .expect("log poisoned")
+            .iter()
+            .any(|topic| topic == "unmatched/topic"),
+        "unmatched topic must not reach the default handler"
+    );
+
+    finish_lifecycle(trigger, run).await;
+}
+
+/// A subscription without a bound handler and without a default
+/// handler must fail the build — its deliveries would go nowhere.
+#[tokio::test]
+async fn subscription_without_any_handler_fails_to_build() {
+    let addr = common::broker();
+    let result = MqttBridge::builder(addr, "rushwind-bridge-no-handler")
+        .subscribe("demo/#")
+        .build();
+    assert!(
+        result.is_err(),
+        "a subscription with no reachable handler must fail the build"
+    );
+}

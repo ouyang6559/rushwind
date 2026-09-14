@@ -26,7 +26,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 |:---|:---|
 | P0 | コア・ライフサイクル、トランスポート契約、適合性スイート |
 | P1 | `rushwind-transport-axum`（管理/API 面）、`rushwind-transport-ws`（セッションミドルウェアチェーン：ゲート + アドミッション + セッションシャットダウンバス、[session-middleware.md](./docs/session-middleware.md) 参照） |
-| P2 | `rushwind-transport-quic`（素の QUIC セッション + フルセッションチェーン：ゲート/refuse、原子アドミッション、ハンドシェイク期限——提供済み；h3/webtransport は後から積み上げ）；`rushwind-transport-mqtt`（外部ブローカー消費ブリッジ）、登録のみのレジストリ薄片 ← 現在 |
+| P2 | `rushwind-transport-quic`（素の QUIC セッション + フルセッションチェーン：ゲート/refuse、原子アドミッション、ハンドシェイク期限——提供済み）；`rushwind-transport-mqtt`（外部ブローカー消費ブリッジ：サブスクリプションごとのハンドラー登録と仕様準拠のワイルドカード振り分け——提供済み）；登録のみのレジストリ薄片——提供済み；後追い追加として `rushwind-transport-webtransport`（wtransport セッション層 + フルセッションチェーン）と `rushwind-transport-h3`（h3/h3-quinn リクエスト層 + リクエスト時刻のゲートチェーン + コネクション単位のアドミッション） |
 | storage | `rushwind-storage`（契約）+ 4 エンジン：インメモリ参照、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横断層 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明デコレーター）；アルゴリズム積木 `rushwind-storage-tree`（木走査）；`rushwind-storage-proto`（proto 定義契約 + protojson + AIP テキスト構文）；`rushwind-storage-macros`（DTO マッピング derive：スカラー族を i8–i64/u8–u32/f32/f64 に拡幅、`as_text` 文字列enum、`with` カスタム変換、`rename` カラム名）；[go-crud](https://github.com/tx7do/go-crud) の対位 |
 | auth | `rushwind-authn` / `rushwind-authz`（契約）+ エンジン行列：認証 7 エンジン（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、認可 3 エンジン（acl / rbac / noop）；`AuthenticationGate` が認証エンジンをセッションのゲートチェーンに接続——契約は [docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語） |
 | config | `rushwind-config`（契約：`Source` trait + 既定の watch 能力メソッド、`FallbackSource` 優先順位合成と変更ストリーム統合）+ 2 エンジン：env（接頭辞付き環境変数）、file（単一ファイル + 親ディレクトリ監視、バースト統合と陳腐値抑制）；`go-wind-plugins/config` の対位 |
@@ -44,6 +44,8 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-transport-axum` | axum アダプター：`Router` をライフサイクルの下で提供；シャットダウン対応はアーキテクチャ文書参照 |
 | `crates/rushwind-transport-ws` | WS セッションルートビルダー：ゲートチェーン + アドミッション + セッションシャットダウンバス |
 | `crates/rushwind-transport-quic` | QUIC アダプター：quinn 受け入れループをライフサイクルに接続、フルセッションチェーン；`stop()` は実釈放（Endpoint::close） |
+| `crates/rushwind-transport-webtransport` | WebTransport アダプター：wtransport エンドポイントをライフサイクルに接続、フルセッションチェーン（セッションリクエスト時刻の HTTP ファミリー・ゲートチェーン、原子アドミッション、ハンドシェイク期限）；`stop()` は実釈放 |
+| `crates/rushwind-transport-h3` | HTTP/3 アダプター：h3/h3-quinn のリクエスト提供をライフサイクルに接続、リクエスト時刻のゲートチェーン（拒否はステータス応答へ映射）とコネクション単位の原子アドミッション；`stop()` は実釈放 |
 | `crates/rushwind-http` | HTTP エッジ：エラー封筒 + リクエストミドルウェアスタック（recovery / request-id / logging / CORS / timeout）+ 認証・認可ブリッジ + ヘルス/メトリクスのマウント——[docs/http-edge.md](./docs/http-edge.md) 参照 |
 | `crates/rushwind-authn` | 認証契約：`Authenticator` trait（抽出/検証の両半分）、`AuthClaims` クレームバッグ、エラー分類学、`AuthenticationGate` ゲート接続層——[docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語）参照 |
 | `crates/rushwind-authn-apikey` | API キー・エンジン：静的キー集合 / キーごとのクレーム / 検証コールバック |

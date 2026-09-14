@@ -1,0 +1,33 @@
+[package]
+name = "rushwind-transport-h3"
+description = "HTTP/3 adapter for the RushWind lifecycle: quinn endpoint serving h3 requests under the Server contract, with request-time gate evaluation and per-connection admission control."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+bytes = "1"
+http = "1"
+quinn = { version = "0.11", default-features = false, features = ["rustls-ring", "runtime-tokio"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
+
+[dev-dependencies]
+rushwind-core = { workspace = true }
+rushwind-testkit = { workspace = true }
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+bytes = "1"
+http = "1"
+quinn = { version = "0.11", default-features = false, features = ["rustls-ring", "runtime-tokio"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls-pki-types = "1"
+rcgen = "0.14"
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

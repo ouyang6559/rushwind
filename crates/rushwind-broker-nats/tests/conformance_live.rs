@@ -97,3 +97,39 @@ async fn unsubscribe_stops_deliveries() {
         "no delivery after unsubscribe"
     );
 }
+
+/// Request/reply: a native responder (async-nats directly — the
+/// contract has no reply surface, so the responder side cannot ride
+/// the engine) echoes requests onto the request's reply subject, and
+/// the engine's `request` surfaces the response payload.
+#[tokio::test]
+async fn request_round_trips_through_native_responder() {
+    let broker = broker().await;
+
+    let responder = async_nats::connect(address())
+        .await
+        .expect("responder connects");
+    let mut subscription = responder
+        .subscribe(String::from("probe.nats.request"))
+        .await
+        .expect("responder subscribes");
+    let echo = responder.clone();
+    tokio::spawn(async move {
+        // The native responder loop: publish each request's payload
+        // back onto its reply subject.
+        while let Some(message) = futures::StreamExt::next(&mut subscription).await {
+            if let Some(reply) = message.reply {
+                let _ = echo.publish(reply, message.payload).await;
+            }
+        }
+    });
+
+    let response = broker
+        .request(
+            "probe.nats.request",
+            Message::from_payload(b"ping".to_vec()),
+        )
+        .await
+        .expect("request must round trip");
+    assert_eq!(response.payload, b"ping".to_vec());
+}

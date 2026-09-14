@@ -26,7 +26,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 |:---|:---|
 | P0 | 生命周期核心、传输契约、一致性套件 |
 | P1 | `rushwind-transport-axum`（管理面/API）、`rushwind-transport-ws`（会话中间件链：门链 + 准入策略 + 会话停机总线，见 [session-middleware.md](./docs/session-middleware.md)） |
-| P2 | `rushwind-transport-quic`（裸 QUIC 会话 + 全套会话链：门/refuse、原子准入、握手截止）；`rushwind-transport-mqtt`（外部 broker 消费桥）；注册-only registry 薄片（`rushwind-registry` + etcd 适配器，线格式与 go-wind 字节对齐）——全部已交付 |
+| P2 | `rushwind-transport-quic`（裸 QUIC 会话 + 全套会话链：门/refuse、原子准入、握手截止）；`rushwind-transport-mqtt`（外部 broker 消费桥，每订阅 handler 注册 + 规范通配分发）；注册-only registry 薄片（`rushwind-registry` + etcd 适配器，线格式与 go-wind 字节对齐）——全部已交付；后补 `rushwind-transport-webtransport`（wtransport 会话层 + 全套会话链）与 `rushwind-transport-h3`（h3/h3-quinn 请求层 + 请求时刻门链 + 连接级准入） |
 | storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横切层 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明装饰器）；算法积木 `rushwind-storage-tree`（树形遍历）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；`rushwind-storage-macros`（DTO 映射 derive：标量族加宽至 i8–i64/u8–u32/f32/f64、`as_text` 字符串枚举、`with` 自定义转换、`rename` 列名）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
 | auth | `rushwind-authn` / `rushwind-authz`（契约）+ 引擎矩阵：认证七引擎（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、鉴权三引擎（acl / rbac / noop）；`AuthenticationGate` 把认证引擎接入会话门链，契约见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
 | config | `rushwind-config`（契约：`Source` trait + 能力默认方法 + `FallbackSource` 优先级合成与变更流合并）+ 双引擎：env（环境变量 + 前缀）、file（单文件 + 父目录监视，突发合并 + 陈旧值抑制）；对位前作 `go-wind-plugins/config` |
@@ -34,7 +34,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | script | `rushwind-script`（契约：`ScriptEngine` 生命周期核心 + 独立能力 trait 族，probe 方法对位 Go `As*` 断言，`FullEngine` 聚合毯实现；`ScriptValue` 数据桥；名称键工厂注册表、固定与自动扩容引擎池、`Manager`；本地源框架层：memory、file（mtime 轮询监视）、静态树 + 前缀、双策略多源聚合、TTL 与失效监视缓存、变换链）+ 五引擎：wasm（wasmi 纯解释实例化 + `_start` 调用）、cel（cel-rust 表达式编译求值 + 变量/扁平化模块桥）、lua（mlua vendored Lua 5.4 + 库白名单 + 指令配额钩子）、javascript（boa actor 线程 + 全局/模块/函数桥）、starlark（starlark-rust 模块求值 + 冻结快照读回）；`rushwind-script-config` 源桥把任意配置域源引擎（env/file/http/etcd/consul）适配为脚本源；对位前作 `go-scripts` |
 | http | `rushwind-http`（HTTP 边缘：gRPC 对齐的错误信封 `HttpError`——code/reason/message/details，`AuthnError`/`StorageError` 内置转换；请求中间件栈 recovery / request-id / logging / CORS / timeout 与 `HttpEdge` 装配器；`with_authn` / `with_authorization` 把认证鉴权契约接上 axum 路由，`Authenticated` 提取器；feature 门控的 `/healthz`+`/readyz` 与 `/metrics` 挂载）；对位前作 `go-wind-plugins/transport/http/middleware`，设计见 [docs/http-edge.md](./docs/http-edge.md) |
 | P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
-| 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
+| 后续 | kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
 ## 仓库布局
 
@@ -45,7 +45,9 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-transport-axum` | axum 适配器：`Router` 接入生命周期，优雅停机映射见架构文档 |
 | `crates/rushwind-transport-ws` | WS 会话路由构建器：门链 + 准入策略 + 会话停机总线，契约见会话中间件文档 |
 | `crates/rushwind-transport-quic` | QUIC 适配器：quinn 接受循环接入生命周期，全套会话链；`stop()` 为真实释放（Endpoint::close） |
-| `crates/rushwind-transport-mqtt` | MQTT 消费桥：订阅外部 broker，重连退避 + 订阅重建，串行泵入 handler |
+| `crates/rushwind-transport-webtransport` | WebTransport 适配器：wtransport 端点接入生命周期，全套会话链（会话请求时刻的 HTTP 族门链、原子准入、握手截止），`stop()` 为真实释放 |
+| `crates/rushwind-transport-h3` | HTTP/3 适配器：h3/h3-quinn 请求服务接入生命周期，请求时刻门链（拒绝映射为状态响应）与连接级原子准入，`stop()` 为真实释放 |
+| `crates/rushwind-transport-mqtt` | MQTT 消费桥：订阅外部 broker（每订阅 handler 注册 + 规范通配分发），重连退避 + 订阅重建，串行泵入 handler |
 | `crates/rushwind-http` | HTTP 边缘：错误信封 + 请求中间件栈（recovery / request-id / logging / CORS / timeout）+ 认证鉴权桥 + 健康/指标挂载，见 [docs/http-edge.md](./docs/http-edge.md) |
 | `crates/rushwind-bootstrap` | 配置驱动装配：YAML → 存储引擎 + HTTP 服务器 + 路由包，汇入单一生命周期 |
 | `crates/rushwind-registry` | 注册-only registry 契约：`Registrar` trait + 与 go-wind 字节对齐的键布局/线格式（golden 钉死） |
