@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use rushwind_tracer::{
-    extract, inject, MapCarrier, OtlpOptions, TracerProviderBuilder, Transport, DEFAULT_TRACER_NAME,
+    extract, MapCarrier, OtlpOptions, TracerProviderBuilder, Transport, DEFAULT_TRACER_NAME,
 };
 
 /// The provider builds for both transports.
