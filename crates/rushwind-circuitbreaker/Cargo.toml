@@ -1,0 +1,15 @@
+[package]
+name = "rushwind-circuitbreaker"
+description = "Circuit-breaker contract for RushWind: State, the CircuitBreaker trait (Allow/MarkSuccess/MarkFailure/Execute/State/Close), extracted from go-wind-plugins/circuitbreaker."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
