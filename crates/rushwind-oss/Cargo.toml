@@ -1,0 +1,16 @@
+[package]
+name = "rushwind-oss"
+description = "Object storage contract for RushWind: put/get/delete over S3-compatible stores, extracted from go-wind-plugins/oss."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["sync"] }

@@ -335,6 +335,37 @@ jobs:
         if: failure()
         run: grep -h "panicked at\|must succeed\|mqtt\|redis" /tmp/mqtt-suite.log /tmp/redis-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
 
+  oss-integration:
+    name: oss conformance (live minio)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Start minio
+        run: |
+          docker run -d --name minio -p 9100:9000 -e MINIO_ROOT_USER=rushwind -e MINIO_ROOT_PASSWORD=rushwind-secret minio/minio:latest server /data
+          for i in $(seq 1 60); do curl -fsS http://localhost:9100/minio/health/live >/dev/null 2>&1 && break; sleep 2; done
+
+      - name: S3 suite
+        run: |
+          cargo test -p rushwind-oss-s3 --features live -- --nocapture 2>&1 | tee /tmp/s3-suite.log
+          exit ${PIPESTATUS[0]}
+        env:
+          OSS_S3_ENDPOINT: 127.0.0.1:9100
+          OSS_S3_ACCESS_KEY: rushwind
+          OSS_S3_SECRET_KEY: rushwind-secret
+          OSS_S3_BUCKET: rushwind-test
+
+      - name: Report suite failure detail
+        if: failure()
+        run: grep -h "panicked at\|must succeed\|s3" /tmp/s3-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
+
   apalis-pg-integration:
     name: task queue conformance (live postgres)
     runs-on: ubuntu-latest

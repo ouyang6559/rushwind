@@ -2520,6 +2520,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "instant-xml"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a2cad967c3b727c000ebfdcd14974539e8c6f59e1d044c8034179df2c6fe250"
+dependencies = [
+ "instant-xml-macros",
+ "thiserror 2.0.20",
+ "xmlparser",
+]
+
+[[package]]
+name = "instant-xml-macros"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3c2e6cbd6e0579ee53a8290fc0015a438cfff0139c8359d5891cae130815d7"
+dependencies = [
+ "heck 0.5.0",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+]
+
+[[package]]
 name = "ipconfig"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4813,6 +4836,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-oss"
+version = "0.0.1"
+dependencies = [
+ "rushwind-transport",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-oss-s3"
+version = "0.0.1"
+dependencies = [
+ "reqwest",
+ "rushwind-oss",
+ "rushwind-transport",
+ "rusty-s3",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-registry"
 version = "0.0.1"
 dependencies = [
@@ -5318,6 +5363,25 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "rusty-s3"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2412ec048709e6a8ee4ee1505313bce003f6b8b27fc41a97e30615223c7ed592"
+dependencies = [
+ "base64 0.23.1",
+ "hmac 0.13.0",
+ "instant-xml",
+ "jiff",
+ "md-5 0.11.0",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "url",
+ "zeroize",
+]
 
 [[package]]
 name = "ryu"
@@ -7660,6 +7724,12 @@ dependencies = [
  "thiserror 2.0.20",
  "time",
 ]
+
+[[package]]
+name = "xmlparser"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "xxhash-rust"
