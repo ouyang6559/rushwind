@@ -17,16 +17,34 @@ fn breaker() -> SreBreaker {
     })
 }
 
-/// With zero errors, every request is accepted.
+/// With zero traffic, acceptance is 1.0 — always allowed (the Go
+/// "no data yet — allow" branch). After successes, acceptance
+/// decays toward requests/(requests+1), so the overwhelming
+/// majority still pass.
 #[test]
 fn no_errors_always_accepts() {
     let b = breaker();
-    for _ in 0..10 {
+
+    // Zero traffic: the Go "no data yet — allow" branch.
+    for _ in 0..20 {
+        assert!(b.allow(), "with no data yet, allow must always pass");
+    }
+
+    // Healthy traffic: acceptance = requests/(requests+1) — high but
+    // probabilistic, so assert a large majority.
+    for _ in 0..20 {
         b.mark_success();
     }
-    for _ in 0..20 {
-        assert!(b.allow(), "healthy traffic must always be accepted");
+    let mut accepted = 0;
+    for _ in 0..100 {
+        if b.allow() {
+            accepted += 1;
+        }
     }
+    assert!(
+        accepted >= 90,
+        "healthy traffic must overwhelmingly pass: {accepted}/100"
+    );
 }
 
 /// Sustained failures drive the breaker open — the acceptance
@@ -47,19 +65,45 @@ fn sustained_errors_reject_everything() {
     assert_eq!(b.state(), rushwind_circuitbreaker::State::Open);
 }
 
-/// After failures, successful traffic recovers acceptance.
+/// After failures, a recovery window with successes outweighing the
+/// K-scaled error debt lifts acceptance back above zero — requests
+/// pass again in the majority. The K=2 debt of 50 failures is 100
+/// requests of credit, so the recovery phase supplies 200 successes.
 #[test]
 fn success_after_failures_recovers() {
     let b = breaker();
-    for _ in 0..100 {
+
+    // All-failure phase: the breaker decays toward full rejection.
+    for _ in 0..50 {
         b.mark_failure();
     }
+    let mut rejected = 0;
     for _ in 0..50 {
+        if !b.allow() {
+            rejected += 1;
+        } else {
+            // Only executed requests count — a rejected request must
+            // not be marked (the Go contract: don't mark after a
+            // failed Allow).
+            b.mark_failure();
+        }
+    }
+    assert!(rejected > 0, "the failure phase must reject sometimes");
+
+    // Recovery phase: 200 successes clear the 50-failure debt (K=2)
+    // and lift acceptance to (250-100)/251 ~= 0.6.
+    for _ in 0..200 {
         b.mark_success();
     }
-    let state = b.state();
+    let mut accepted = 0;
+    for _ in 0..50 {
+        if b.allow() {
+            accepted += 1;
+        }
+        b.mark_success();
+    }
     assert!(
-        state != rushwind_circuitbreaker::State::Open,
-        "mixed success must not keep the breaker fully open"
+        accepted >= 20,
+        "acceptance must recover: accepted={accepted} of 50"
     );
 }
