@@ -1,0 +1,22 @@
+[package]
+name = "rushwind-ai-openai"
+description = "OpenAI-compatible engine for the RushWind ai contract: chat, streaming, and embeddings over reqwest — OpenAI, Qwen, Ollama."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+reqwest = { workspace = true }
+rushwind-ai = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
