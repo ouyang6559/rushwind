@@ -17,8 +17,8 @@ use axum::routing::get;
 use axum::{Extension, Router};
 use rushwind_authn::{AuthClaims, Authenticator, AuthnError};
 use rushwind_authz::{
-    Action, AuthzError, Engine, Pairs, PolicyMap, Project, Projects, Resource, RoleMap,
-    Subject, Subjects,
+    Action, AuthzError, Engine, Pairs, PolicyMap, Project, Projects, Resource, RoleMap, Subject,
+    Subjects,
 };
 use rushwind_http::*;
 use serde_json::{json, Value};
