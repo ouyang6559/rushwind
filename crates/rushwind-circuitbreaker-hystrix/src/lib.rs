@@ -204,12 +204,10 @@ impl HystrixBreaker {
         }
         let n = state.buckets.len();
         if steps >= n {
-            for bucket in &mut state.buckets {
-                *bucket = Bucket {
-                    requests: 0,
-                    errors: 0,
-                };
-            }
+            state.buckets.fill(Bucket {
+                requests: 0,
+                errors: 0,
+            });
         } else {
             for offset in 0..steps {
                 let idx = (self.bucket_index(state, now) + n - steps + offset + 1 + n) % n;
@@ -229,12 +227,10 @@ impl HystrixBreaker {
     }
 
     fn reset_buckets_locked(state: &mut HystrixState) {
-        for bucket in &mut state.buckets {
-            *bucket = Bucket {
-                requests: 0,
-                errors: 0,
-            };
-        }
+        state.buckets.fill(Bucket {
+            requests: 0,
+            errors: 0,
+        });
     }
 }
 

@@ -17,8 +17,18 @@ pub fn bind_addr() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 0))
 }
 
+/// Installs the ring provider as the process default, once. The
+/// dependency graph unions more than one rustls provider feature, so
+/// the implicit builder-provider resolution is ambiguous and panics;
+/// pinning the provider here keeps the fixtures hermetic to that
+/// union. Idempotent: a second call is a no-op error that is ignored.
+fn ensure_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 /// A self-signed quinn server configuration for "localhost".
 pub fn server_config() -> quinn::ServerConfig {
+    ensure_provider();
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
         .expect("self-signed certificate generation must succeed");
     let cert_der = CertificateDer::from(cert.cert);
@@ -29,6 +39,7 @@ pub fn server_config() -> quinn::ServerConfig {
 
 /// A client endpoint that accepts any server certificate.
 pub fn client_endpoint() -> quinn::Endpoint {
+    ensure_provider();
     let mut endpoint = quinn::Endpoint::client(SocketAddr::from(([127, 0, 0, 1], 0)))
         .expect("client bind must succeed");
     let rustls_config = rustls::ClientConfig::builder()

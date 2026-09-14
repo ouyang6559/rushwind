@@ -6,7 +6,6 @@
 
 use std::time::Duration;
 
-use rushwind_circuitbreaker::CircuitBreaker;
 use rushwind_circuitbreaker_sres::SreBreaker;
 
 fn breaker() -> SreBreaker {

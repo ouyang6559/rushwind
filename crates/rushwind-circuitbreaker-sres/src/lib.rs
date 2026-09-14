@@ -182,12 +182,10 @@ impl SreBreaker {
         }
         let n = state.buckets.len();
         if steps >= n {
-            for bucket in &mut state.buckets {
-                *bucket = SreBucket {
-                    requests: 0,
-                    errors: 0,
-                };
-            }
+            state.buckets.fill(SreBucket {
+                requests: 0,
+                errors: 0,
+            });
         } else {
             for offset in 0..steps {
                 let current = self.bucket_index(state, now);
