@@ -31,6 +31,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | auth | `rushwind-authn` / `rushwind-authz`（契约）+ 引擎矩阵：认证七引擎（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、鉴权三引擎（acl / rbac / noop）；`AuthenticationGate` 把认证引擎接入会话门链，契约见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
 | config | `rushwind-config`（契约：`Source` trait + 能力默认方法 + `FallbackSource` 优先级合成与变更流合并）+ 双引擎：env（环境变量 + 前缀）、file（单文件 + 父目录监视，突发合并 + 陈旧值抑制）；对位前作 `go-wind-plugins/config` |
 | metrics | `rushwind-metrics`（契约：`Metrics` trait——counter/histogram/gauge，标签规范化排序）+ 三引擎：prometheus（拉：注册表懒注册 + 文本格式暴露）、otel（推：OTLP gRPC/HTTP 导出）、datadog（推：手写 DogStatsD over UDP + 批量缓冲）；对位前作 `go-wind-plugins/metrics` |
+| script | `rushwind-script`（契约：`ScriptEngine` 生命周期核心 + 独立能力 trait 族，probe 方法对位 Go `As*` 断言，`FullEngine` 聚合毯实现；`ScriptValue` 数据桥；名称键工厂注册表、固定与自动扩容引擎池、`Manager`；本地源框架层：memory、file（mtime 轮询监视）、静态树 + 前缀、双策略多源聚合、TTL 与失效监视缓存、变换链）；对位前作 `go-scripts` |
 | P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
 | 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
@@ -82,6 +83,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-storage-tree` | 树形查询：children/roots/ancestors/subtree，契约级遍历 + 环检测，任意引擎可用 |
 | `crates/rushwind-storage-observe` | 观测装饰器：每调用一个 `tracing` span（table/op/outcome），OTel 导出交由 subscriber 选型 |
 | `crates/rushwind-storage-axum` | HTTP 端点层：任意 Repository 挂成 CRUD 路由，列表查询双入口（protojson `q` / AIP `filter`），viewer 钩子收口租户 |
+| `crates/rushwind-script` | 脚本引擎契约：能力拆分 trait 族（loader / executor / global / function / module / watch 六能力聚合，sandbox / runtime-hook / sync / quota 四能力独立），probe 方法即能力探测面，`ScriptValue` 数据桥，名称键工厂注册表，`EnginePool` / `AutoGrowEnginePool`（队列 + 计数信号量，`forget` 语义保持许可数与队列长度一致，`Semaphore::close` 对位 Go `close(chan)` 唤醒），`Manager`；源契约 `ScriptSource` / `SignalStream` 与本地载体、组合（MemSource、FileSource mtime 轮询、FileSystemSource + StaticTree 前缀拼接、MultiSource 的 fallback 顺序走查与 first-ok 同 future 竞速、CachedSource 惰性失效排水 + TTL、TransformSource 变换链） |
 | `crates/rushwind-testkit` | 跨适配器一致性测试套件——任何传输/引擎必须整套通过 |
 | `examples/multi-server` | 双服务器生命周期演示（级联停机、阶段顺序） |
 | `examples/axum-admin` | axum 适配器演示：健康路由 + 信号驱动的优雅停机 |

@@ -1,0 +1,18 @@
+[package]
+name = "rushwind-script"
+description = "Script-engine contract for RushWind: the capability-split engine traits with the FullEngine aggregate, the engine pools and manager, the factory registry, and the local script-source framework (memory / file / static-tree / multi-strategy / cached / transform), extracted from the Go predecessor go-scripts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

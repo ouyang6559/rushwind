@@ -31,6 +31,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | auth | `rushwind-authn` / `rushwind-authz`（契約）+ エンジン行列：認証 7 エンジン（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、認可 3 エンジン（acl / rbac / noop）；`AuthenticationGate` が認証エンジンをセッションのゲートチェーンに接続——契約は [docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語） |
 | config | `rushwind-config`（契約：`Source` trait + 既定の watch 能力メソッド、`FallbackSource` 優先順位合成と変更ストリーム統合）+ 2 エンジン：env（接頭辞付き環境変数）、file（単一ファイル + 親ディレクトリ監視、バースト統合と陳腐値抑制）；`go-wind-plugins/config` の対位 |
 | metrics | `rushwind-metrics`（契約：`Metrics` trait——counter/histogram/gauge、ラベル正規化ソート）+ 3 エンジン：prometheus（プル：レジストリ遅延登録 + テキスト形式露出）、otel（プッシュ：OTLP gRPC/HTTP エクスポート）、datadog（プッシュ：手書き DogStatsD over UDP + バッチバッファ）；`go-wind-plugins/metrics` の対位 |
+| script | `rushwind-script`（契約：`ScriptEngine` ライフサイクル核心 + 独立能力 trait 族——probe メソッドで Go の `As*` アサーションに対応、`FullEngine` 集約ブランケット実装；`ScriptValue` データブリッジ；名前キーのファクトリーレジストリ、固定・自動拡張の両エンジンプール、`Manager`；ローカルソースフレームワーク層——メモリ、ファイル（mtime ポーリング監視）、静的ツリー + 接頭辞結合、二戦略マルチソース集約、TTL と監視駆動失効付きキャッシュ、変換チェーン）；`go-scripts` の対位 |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
 ## レイアウト
@@ -77,6 +78,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-storage-tree` | 木構造クエリ：children/roots/ancestors/subtree を契約レベルの走査で＋循環検出、任意のエンジンで利用可 |
 | `crates/rushwind-storage-observe` | 可観測性デコレーター：呼び出しごとに `tracing` スパン（table/op/outcome）、OTel 出力は subscriber の選択 |
 | `crates/rushwind-storage-axum` | HTTP エッジ層：任意の Repository を CRUD ルートとして公開、一覧クエリは protojson `q` / AIP `filter` の二入口、viewer フックでテナンシーを収口 |
+| `crates/rushwind-script` | スクリプトエンジン契約：能力分割 trait 族（loader / executor / global / function / module / watch の六能力を集約、sandbox / runtime-hook / sync / quota の四能力は独立）、probe メソッドが能力探出面、`ScriptValue` データブリッジ、名前キーのファクトリーレジストリ、`EnginePool` / `AutoGrowEnginePool`（キュー + 計数セマフォ、許可数とキュー長を一致させる `forget` セマンティクス、`Semaphore::close` で Go の `close(chan)` 覚醒に対応）、`Manager`；ソース契約 `ScriptSource` / `SignalStream` とそのローカル担体・合成（MemSource、mtime ポーリングの FileSource、StaticTree 上の FileSystemSource と接頭辞結合、MultiSource の fallback 順次走査と first-ok 同一 future 内競走、CachedSource の遅延失効ドレインと TTL、TransformSource の変換チェーン） |
 | `crates/rushwind-testkit` | クロスアダプター適合性スイート——すべてのトランスポート/エンジンが全項目に合格する必要がある |
 | `examples/multi-server` | 2 サーバーのライフサイクル・デモ（カスケード、フェーズ順序） |
 | `examples/axum-admin` | axum アダプター・デモ：ヘルスルート + シグナル駆動のグレースフルシャットダウン |
