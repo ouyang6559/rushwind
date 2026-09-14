@@ -39,9 +39,13 @@ rushwind-health = { path = "crates/rushwind-health", version = "0.0.1" }
 rushwind-ratelimit = { path = "crates/rushwind-ratelimit", version = "0.0.1" }
 rushwind-ratelimit-tokenbucket = { path = "crates/rushwind-ratelimit-tokenbucket", version = "0.0.1" }
 rushwind-ratelimit-bbr = { path = "crates/rushwind-ratelimit-bbr", version = "0.0.1" }
+rushwind-retry = { path = "crates/rushwind-retry", version = "0.0.1" }
 rushwind-metrics-datadog = { path = "crates/rushwind-metrics-datadog", version = "0.0.1" }
 rushwind-metrics-otel = { path = "crates/rushwind-metrics-otel", version = "0.0.1" }
 rushwind-metrics-prometheus = { path = "crates/rushwind-metrics-prometheus", version = "0.0.1" }
+rushwind-circuitbreaker-vegas = { path = "crates/rushwind-circuitbreaker-vegas", version = "0.0.1" }
+rushwind-circuitbreaker-sres = { path = "crates/rushwind-circuitbreaker-sres", version = "0.0.1" }
+rushwind-circuitbreaker-hystrix = { path = "crates/rushwind-circuitbreaker-hystrix", version = "0.0.1" }
 rushwind-config = { path = "crates/rushwind-config", version = "0.0.1" }
 rushwind-config-env = { path = "crates/rushwind-config-env", version = "0.0.1" }
 rushwind-config-file = { path = "crates/rushwind-config-file", version = "0.0.1" }
@@ -51,6 +55,9 @@ rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.
 rushwind-oss = { path = "crates/rushwind-oss", version = "0.0.1" }
 rushwind-oss-s3 = { path = "crates/rushwind-oss-s3", version = "0.0.1" }
 rushwind-ai-openai = { path = "crates/rushwind-ai-openai", version = "0.0.1" }
+# Unblock entries for the in-flight circuitbreaker/metrics families
+# (crates on disk, manifests inheriting these keys).
+rushwind-circuitbreaker = { path = "crates/rushwind-circuitbreaker", version = "0.0.1" }
 rushwind-transaction = { path = "crates/rushwind-transaction", version = "0.0.1" }
 rushwind-transaction-dtm = { path = "crates/rushwind-transaction-dtm", version = "0.0.1" }
 rushwind-metrics = { path = "crates/rushwind-metrics", version = "0.0.1" }
@@ -80,6 +87,15 @@ rushwind-storage-tree = { path = "crates/rushwind-storage-tree", version = "0.0.
 rushwind-storage-observe = { path = "crates/rushwind-storage-observe", version = "0.0.1" }
 rushwind-storage-axum = { path = "crates/rushwind-storage-axum", version = "0.0.1" }
 rushwind-apalis-postgres = { path = "crates/rushwind-apalis-postgres", version = "0.0.1" }
+rushwind-encoding = { path = "crates/rushwind-encoding", version = "0.0.1" }
+rushwind-encoding-json = { path = "crates/rushwind-encoding-json", version = "0.0.1" }
+rushwind-encoding-msgpack = { path = "crates/rushwind-encoding-msgpack", version = "0.0.1" }
+rushwind-encoding-yaml = { path = "crates/rushwind-encoding-yaml", version = "0.0.1" }
+rushwind-encoding-toml = { path = "crates/rushwind-encoding-toml", version = "0.0.1" }
+rushwind-encoding-cbor = { path = "crates/rushwind-encoding-cbor", version = "0.0.1" }
+rushwind-encoding-bson = { path = "crates/rushwind-encoding-bson", version = "0.0.1" }
+rushwind-encoding-xml = { path = "crates/rushwind-encoding-xml", version = "0.0.1" }
+rushwind-encoding-proto = { path = "crates/rushwind-encoding-proto", version = "0.0.1" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
@@ -150,6 +166,20 @@ opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto"]
 # Directory watching for the config file engine: the parent-dir watch
 # survives the atomic rename editors save through.
 notify = "8"
+
+# The encoding engines: object-safe serde marshaling over the
+# `rushwind-encoding` Codec contract. erased-serde gives the contract its
+# dyn-compatible surface; the rest are the per-format serializers. toml
+# stays on the 0.8 line (1.1 needs rustc 1.85, above the workspace floor);
+# serde_yaml is upstream-deprecated but still the most battle-tested YAML
+# serde implementation, mirroring Go's own maintenance-mode yaml.v3.
+erased-serde = "0.4"
+rmp-serde = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+ciborium = "0.2"
+bson = "2"
+quick-xml = { version = "0.37", features = ["serialize"] }
 
 # Workspace-wide lint policy: RushWind crates contain no unsafe code, period.
 [workspace.lints.rust]

@@ -823,6 +823,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ciborium"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
+dependencies = [
+ "ciborium-io",
+ "ciborium-ll",
+ "serde",
+]
+
+[[package]]
+name = "ciborium-io"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
+
+[[package]]
+name = "ciborium-ll"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
+dependencies = [
+ "ciborium-io",
+ "half",
+]
+
+[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1590,6 +1617,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erased-serde"
+version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec"
+dependencies = [
+ "serde",
+ "serde_core",
+ "typeid",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1977,6 +2015,17 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "half"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b"
+dependencies = [
+ "cfg-if",
+ "crunchy",
+ "zerocopy",
 ]
 
 [[package]]
@@ -3449,7 +3498,7 @@ dependencies = [
  "prost",
  "prost-types",
  "rand 0.10.2",
- "reqwest",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -3676,6 +3725,81 @@ name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
+
+[[package]]
+name = "opentelemetry"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0142c63252a9e054e68a4c61a5778f7b14f576274d593f8ce883d191a099682"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "js-sys",
+ "pin-project-lite",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "opentelemetry-http"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5683015d09e2df236ef005b17f6f196f0d5f6313c4fa43a7b6a53b52776e4331"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "http 1.5.0",
+ "opentelemetry",
+ "reqwest 0.13.5",
+]
+
+[[package]]
+name = "opentelemetry-otlp"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
+dependencies = [
+ "http 1.5.0",
+ "opentelemetry",
+ "opentelemetry-http",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "reqwest 0.13.5",
+ "thiserror 2.0.20",
+ "tokio",
+ "tonic",
+ "tonic-types",
+]
+
+[[package]]
+name = "opentelemetry-proto"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
+dependencies = [
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "prost",
+ "tonic",
+ "tonic-prost",
+]
+
+[[package]]
+name = "opentelemetry_sdk"
+version = "0.32.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b59f80e1ac4d5ff7a2db8fb6c80badb7f0f3f858211fba08dd9aaec750894f9"
+dependencies = [
+ "futures-channel",
+ "futures-executor",
+ "futures-util",
+ "opentelemetry",
+ "percent-encoding",
+ "portable-atomic",
+ "rand 0.9.5",
+ "thiserror 2.0.20",
+]
 
 [[package]]
 name = "ordered-float"
@@ -4096,6 +4220,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "prost"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4159,6 +4298,12 @@ checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
 dependencies = [
  "prost",
 ]
+
+[[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "protox"
@@ -4233,6 +4378,16 @@ dependencies = [
  "rushwind-transport-quic",
  "rustls-pki-types",
  "tokio",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.37.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -4556,6 +4711,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "reqwest"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16a1cfa75cc186dd73d5818e510e042e40927bccc9c236b061cea97e1eb08029"
+dependencies = [
+ "base64 0.23.1",
+ "bytes",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "http 1.5.0",
+ "http-body 1.1.0",
+ "http-body-util",
+ "hyper 1.11.1",
+ "hyper-util",
+ "js-sys",
+ "log",
+ "percent-encoding",
+ "pin-project-lite",
+ "sync_wrapper",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "resolv-conf"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4573,6 +4759,25 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rmp"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ba8be72d372b2c9b35542551678538b562e7cf86c3315773cae48dfbfe7790c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "rmp-serde"
+version = "1.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f81bee8c8ef9b577d1681a70ebbc962c232461e397b22c208c43c04b67a155"
+dependencies = [
+ "rmp",
+ "serde",
 ]
 
 [[package]]
@@ -4666,22 +4871,6 @@ dependencies = [
  "futures",
  "reqwest 0.12.28",
  "rushwind-ai",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "rushwind-transaction"
-version = "0.0.1"
-
-[[package]]
-name = "rushwind-transaction-dtm"
-version = "0.0.1"
-dependencies = [
- "axum 0.8.9",
- "reqwest 0.12.28",
- "rushwind-transaction",
  "serde",
  "serde_json",
  "tokio",
@@ -4929,6 +5118,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-circuitbreaker"
+version = "0.0.1"
+dependencies = [
+ "rushwind-transport",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-circuitbreaker-hystrix"
+version = "0.0.1"
+dependencies = [
+ "rushwind-circuitbreaker",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-circuitbreaker-sres"
+version = "0.0.1"
+dependencies = [
+ "getrandom 0.3.4",
+ "rushwind-circuitbreaker",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-circuitbreaker-vegas"
+version = "0.0.1"
+dependencies = [
+ "rushwind-circuitbreaker",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-config"
 version = "0.0.1"
 dependencies = [
@@ -4963,14 +5194,136 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-encoding"
+version = "0.0.1"
+dependencies = [
+ "erased-serde",
+ "rushwind-encoding-json",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rushwind-encoding-bson"
+version = "0.0.1"
+dependencies = [
+ "bson",
+ "erased-serde",
+ "rushwind-encoding",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rushwind-encoding-cbor"
+version = "0.0.1"
+dependencies = [
+ "ciborium",
+ "erased-serde",
+ "rushwind-encoding",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rushwind-encoding-json"
+version = "0.0.1"
+dependencies = [
+ "erased-serde",
+ "rushwind-encoding",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rushwind-encoding-msgpack"
+version = "0.0.1"
+dependencies = [
+ "erased-serde",
+ "rmp-serde",
+ "rushwind-encoding",
+ "serde",
+]
+
+[[package]]
+name = "rushwind-encoding-proto"
+version = "0.0.1"
+dependencies = [
+ "prost",
+ "rushwind-encoding",
+]
+
+[[package]]
+name = "rushwind-encoding-toml"
+version = "0.0.1"
+dependencies = [
+ "erased-serde",
+ "rushwind-encoding",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "rushwind-encoding-xml"
+version = "0.0.1"
+dependencies = [
+ "erased-serde",
+ "quick-xml",
+ "rushwind-encoding",
+ "serde",
+]
+
+[[package]]
+name = "rushwind-encoding-yaml"
+version = "0.0.1"
+dependencies = [
+ "erased-serde",
+ "rushwind-encoding",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "rushwind-health"
 version = "0.0.1"
 dependencies = [
  "axum 0.8.9",
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-transport",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-metrics"
+version = "0.0.1"
+
+[[package]]
+name = "rushwind-metrics-datadog"
+version = "0.0.1"
+dependencies = [
+ "rushwind-metrics",
+]
+
+[[package]]
+name = "rushwind-metrics-otel"
+version = "0.0.1"
+dependencies = [
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "rushwind-metrics",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-metrics-prometheus"
+version = "0.0.1"
+dependencies = [
+ "prometheus",
+ "rushwind-metrics",
  "tokio",
 ]
 
@@ -4987,7 +5340,7 @@ dependencies = [
 name = "rushwind-oss-s3"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-oss",
  "rushwind-transport",
  "rusty-s3",
@@ -5035,7 +5388,7 @@ dependencies = [
 name = "rushwind-registry-consul"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-registry",
  "rushwind-transport",
  "serde",
@@ -5059,7 +5412,7 @@ dependencies = [
 name = "rushwind-registry-eureka"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-registry",
  "rushwind-transport",
  "serde",
@@ -5098,7 +5451,7 @@ dependencies = [
 name = "rushwind-registry-polaris"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-registry",
  "rushwind-transport",
  "serde",
@@ -5112,7 +5465,7 @@ version = "0.0.1"
 dependencies = [
  "futures",
  "getrandom 0.3.4",
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-registry",
  "rushwind-transport",
  "serde",
@@ -5131,6 +5484,15 @@ dependencies = [
  "serde_json",
  "tokio",
  "zookeeper-async",
+]
+
+[[package]]
+name = "rushwind-retry"
+version = "0.0.1"
+dependencies = [
+ "getrandom 0.3.4",
+ "rushwind-transport",
+ "tokio",
 ]
 
 [[package]]
@@ -5176,7 +5538,7 @@ dependencies = [
 name = "rushwind-storage-clickhouse"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-storage",
  "rushwind-testkit",
  "serde_json",
@@ -5187,7 +5549,7 @@ dependencies = [
 name = "rushwind-storage-elasticsearch"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-storage",
  "rushwind-testkit",
  "serde_json",
@@ -5198,7 +5560,7 @@ dependencies = [
 name = "rushwind-storage-influxdb"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-storage",
  "rushwind-testkit",
  "serde_json",
@@ -5251,7 +5613,7 @@ dependencies = [
 name = "rushwind-storage-opensearch"
 version = "0.0.1"
 dependencies = [
- "reqwest",
+ "reqwest 0.12.28",
  "rushwind-storage",
  "rushwind-storage-elasticsearch",
  "rushwind-testkit",
@@ -5314,6 +5676,22 @@ dependencies = [
  "rushwind-storage",
  "rushwind-storage-memory",
  "rushwind-transport",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-transaction"
+version = "0.0.1"
+
+[[package]]
+name = "rushwind-transaction-dtm"
+version = "0.0.1"
+dependencies = [
+ "axum 0.8.9",
+ "reqwest 0.12.28",
+ "rushwind-transaction",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -7064,6 +7442,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tonic-types"
+version = "0.14.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73ab1b02061f83d519bba3caa167f88f261ef05720ab8ebc954ade70de3348e8"
+dependencies = [
+ "prost",
+ "prost-types",
+ "tonic",
+]
+
+[[package]]
 name = "tower"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7250,6 +7639,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "typeid"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"
