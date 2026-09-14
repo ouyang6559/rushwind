@@ -1,0 +1,19 @@
+[package]
+name = "rushwind-tracer"
+description = "Tracing contract for RushWind: OTLP tracer-provider setup and W3C trace-context carrier helpers, extracted from go-wind-plugins/tracer/otlp."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tonic = "0.14"
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+
+tokio = { workspace = true, features = ["macros", "rt"] }

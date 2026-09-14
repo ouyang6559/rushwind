@@ -5680,6 +5680,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-tracer"
+version = "0.0.1"
+dependencies = [
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "tokio",
+ "tonic",
+]
+
+[[package]]
 name = "rushwind-transaction"
 version = "0.0.1"
 
