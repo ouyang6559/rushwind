@@ -1,0 +1,17 @@
+[package]
+name = "rushwind-config-env"
+description = "Environment-variable engine for the RushWind configuration contract: process environment lookups with an optional prefix."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-config = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

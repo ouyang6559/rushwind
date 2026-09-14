@@ -1,0 +1,17 @@
+[package]
+name = "rushwind-config"
+description = "Configuration-source contract for RushWind: the Source trait (load plus optional watch capabilities), the stream contracts, and the priority-composed FallbackSource."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
