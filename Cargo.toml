@@ -51,6 +51,8 @@ rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.
 rushwind-oss = { path = "crates/rushwind-oss", version = "0.0.1" }
 rushwind-oss-s3 = { path = "crates/rushwind-oss-s3", version = "0.0.1" }
 rushwind-ai-openai = { path = "crates/rushwind-ai-openai", version = "0.0.1" }
+rushwind-transaction = { path = "crates/rushwind-transaction", version = "0.0.1" }
+rushwind-transaction-dtm = { path = "crates/rushwind-transaction-dtm", version = "0.0.1" }
 rushwind-metrics = { path = "crates/rushwind-metrics", version = "0.0.1" }
 prometheus = "0.13"
 rushwind-authn = { path = "crates/rushwind-authn", version = "0.0.1" }

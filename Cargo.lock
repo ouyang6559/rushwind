@@ -4672,6 +4672,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-transaction"
+version = "0.0.1"
+
+[[package]]
+name = "rushwind-transaction-dtm"
+version = "0.0.1"
+dependencies = [
+ "axum 0.8.9",
+ "reqwest 0.12.28",
+ "rushwind-transaction",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-apalis-postgres"
 version = "0.0.1"
 dependencies = [
