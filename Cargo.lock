@@ -5168,10 +5168,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-config-consul"
+version = "0.0.1"
+dependencies = [
+ "base64 0.22.1",
+ "reqwest 0.12.28",
+ "rushwind-config",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rushwind-config-env"
 version = "0.0.1"
 dependencies = [
  "rushwind-config",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-config-etcd"
+version = "0.0.1"
+dependencies = [
+ "etcd-client",
+ "rushwind-config",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -5181,6 +5206,18 @@ version = "0.0.1"
 dependencies = [
  "notify",
  "rushwind-config",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-config-http"
+version = "0.0.1"
+dependencies = [
+ "reqwest 0.12.28",
+ "rushwind-config",
+ "rushwind-transport",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -5492,6 +5529,14 @@ version = "0.0.1"
 dependencies = [
  "getrandom 0.3.4",
  "rushwind-transport",
+ "tokio",
+]
+
+[[package]]
+name = "rushwind-script"
+version = "0.0.1"
+dependencies = [
+ "futures",
  "tokio",
 ]
 

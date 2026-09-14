@@ -1,0 +1,27 @@
+[package]
+name = "rushwind-config-consul"
+description = "Consul KV config source for the RushWind configuration contract: GET by key with blocking-query watch in push mode."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Live config suite (container-backed); run by CI.
+live = []
+
+[dependencies]
+rushwind-config = { workspace = true }
+rushwind-transport = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+base64 = "0.22"
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
