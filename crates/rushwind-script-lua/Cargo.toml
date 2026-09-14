@@ -1,0 +1,20 @@
+[package]
+name = "rushwind-script-lua"
+description = "Lua engine for the Rust script contract: evaluation over mlua's vendored Lua 5.4, with the sandbox allow-list, globals, host functions, and data modules bridged from ScriptValue."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-script = { workspace = true }
+mlua = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

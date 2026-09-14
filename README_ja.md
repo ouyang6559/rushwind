@@ -31,7 +31,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | auth | `rushwind-authn` / `rushwind-authz`（契約）+ エンジン行列：認証 7 エンジン（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、認可 3 エンジン（acl / rbac / noop）；`AuthenticationGate` が認証エンジンをセッションのゲートチェーンに接続——契約は [docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語） |
 | config | `rushwind-config`（契約：`Source` trait + 既定の watch 能力メソッド、`FallbackSource` 優先順位合成と変更ストリーム統合）+ 2 エンジン：env（接頭辞付き環境変数）、file（単一ファイル + 親ディレクトリ監視、バースト統合と陳腐値抑制）；`go-wind-plugins/config` の対位 |
 | metrics | `rushwind-metrics`（契約：`Metrics` trait——counter/histogram/gauge、ラベル正規化ソート）+ 3 エンジン：prometheus（プル：レジストリ遅延登録 + テキスト形式露出）、otel（プッシュ：OTLP gRPC/HTTP エクスポート）、datadog（プッシュ：手書き DogStatsD over UDP + バッチバッファ）；`go-wind-plugins/metrics` の対位 |
-| script | `rushwind-script`（契約：`ScriptEngine` ライフサイクル核心 + 独立能力 trait 族——probe メソッドで Go の `As*` アサーションに対応、`FullEngine` 集約ブランケット実装；`ScriptValue` データブリッジ；名前キーのファクトリーレジストリ、固定・自動拡張の両エンジンプール、`Manager`；ローカルソースフレームワーク層——メモリ、ファイル（mtime ポーリング監視）、静的ツリー + 接頭辞結合、二戦略マルチソース集約、TTL と監視駆動失効付きキャッシュ、変換チェーン）；`go-scripts` の対位 |
+| script | `rushwind-script`（契約：`ScriptEngine` ライフサイクル核心 + 独立能力 trait 族——probe メソッドで Go の `As*` アサーションに対応、`FullEngine` 集約ブランケット実装；`ScriptValue` データブリッジ；名前キーのファクトリーレジストリ、固定・自動拡張の両エンジンプール、`Manager`；ローカルソースフレームワーク層——メモリ、ファイル（mtime ポーリング監視）、静的ツリー + 接頭辞結合、二戦略マルチソース集約、TTL と監視駆動失効付きキャッシュ、変換チェーン）+ 5 エンジン：wasm（wasmi 純インタープリターでの実体化と `_start` 呼び出し）、cel（cel-rust の式コンパイル・評価と変数・平坦化モジュールブリッジ）、lua（mlua の vendored Lua 5.4 とライブラリ許可リスト・命令クォータフック）、javascript（boa を actor スレッドで稼働させ、グローバル・モジュール・関数ブリッジ）、starlark（starlark-rust のモジュール評価と凍結スナップショットの読み戻し）；`rushwind-script-config` ソースブリッジは任意の設定ドメイン・ソースエンジン（env/file/http/etcd/consul）をスクリプトソースへ適合；`go-scripts` の対位 |
 | http | `rushwind-http`（HTTP エッジ：gRPC 整列のエラー封筒 `HttpError`——code/reason/message/details、`AuthnError`/`StorageError` の組み込み変換；リクエストミドルウェアスタック recovery / request-id / logging / CORS / timeout と `HttpEdge` アセンブラ；`with_authn` / `with_authorization` で認証・認可契約を axum ルートに接続、`Authenticated` エクストラクター；feature ゲートの `/healthz`+`/readyz` と `/metrics` マウント）；`go-wind-plugins/transport/http/middleware` の対位、設計は [docs/http-edge.md](./docs/http-edge.md) |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
@@ -81,6 +81,12 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-storage-observe` | 可観測性デコレーター：呼び出しごとに `tracing` スパン（table/op/outcome）、OTel 出力は subscriber の選択 |
 | `crates/rushwind-storage-axum` | HTTP エッジ層：任意の Repository を CRUD ルートとして公開、一覧クエリは protojson `q` / AIP `filter` の二入口、viewer フックでテナンシーを収口 |
 | `crates/rushwind-script` | スクリプトエンジン契約：能力分割 trait 族（loader / executor / global / function / module / watch の六能力を集約、sandbox / runtime-hook / sync / quota の四能力は独立）、probe メソッドが能力探出面、`ScriptValue` データブリッジ、名前キーのファクトリーレジストリ、`EnginePool` / `AutoGrowEnginePool`（キュー + 計数セマフォ、許可数とキュー長を一致させる `forget` セマンティクス、`Semaphore::close` で Go の `close(chan)` 覚醒に対応）、`Manager`；ソース契約 `ScriptSource` / `SignalStream` とそのローカル担体・合成（MemSource、mtime ポーリングの FileSource、StaticTree 上の FileSystemSource と接頭辞結合、MultiSource の fallback 順次走査と first-ok 同一 future 内競走、CachedSource の遅延失効ドレインと TTL、TransformSource の変換チェーン） |
+| `crates/rushwind-script-wasm` | Wasm エンジン：wasmi 純インタープリター上のモジュール実体化と `_start` エクスポート呼び出し、空のインポート面、その他の能力は一律拒否 |
+| `crates/rushwind-script-cel` | CEL エンジン：cel-rust による式のコンパイルと評価、`ScriptValue` 変数ブリッジ、マップの接頭辞付きグローバルへの平坦化 |
+| `crates/rushwind-script-lua` | Lua エンジン：mlua の vendored Lua 5.4、標準ライブラリ許可リストのサンドボックス、ホスト関数登録、命令クォータフックによる真の中断と事後タイムアウト検査、watch の再読み込み |
+| `crates/rushwind-script-javascript` | JavaScript エンジン：専用 actor スレッド上で稼働する boa（コマンドチャネル + 一回限りの応答、goja の直列実行に対応）、グローバル・モジュール・スクリプト関数のブリッジ、結果配列セマンティクス、事後クォータ検査 |
+| `crates/rushwind-script-starlark` | Starlark エンジン：starlark-rust 標準方言のモジュール評価、ホスト環境注入、スクリプト関数呼び出し、JSON シリアライザー経由の値読み戻し、watch の再キューイング |
+| `crates/rushwind-script-config` | 設定ソースブリッジ：任意の設定ドメイン `Source` をスクリプト `ScriptSource` へ適合——不在を未検出へマップ、エラー分類ブリッジ（NotWatchable → 能力未対応）、シグナルストリームの素通し |
 | `crates/rushwind-testkit` | クロスアダプター適合性スイート——すべてのトランスポート/エンジンが全項目に合格する必要がある |
 | `examples/multi-server` | 2 サーバーのライフサイクル・デモ（カスケード、フェーズ順序） |
 | `examples/axum-admin` | axum アダプター・デモ：ヘルスルート + シグナル駆動のグレースフルシャットダウン |

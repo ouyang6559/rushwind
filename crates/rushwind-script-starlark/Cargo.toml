@@ -1,0 +1,20 @@
+[package]
+name = "rushwind-script-starlark"
+description = "Starlark engine for the Rust script contract: evaluation over starlark-rust with the Go predecessor's script-global accumulation semantics."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-script = { workspace = true }
+starlark = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

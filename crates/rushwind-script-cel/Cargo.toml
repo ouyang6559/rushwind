@@ -1,0 +1,19 @@
+[package]
+name = "rushwind-script-cel"
+description = "CEL engine for the Rust script contract: expression compilation and evaluation over the cel-rust interpreter, with variables bridged from ScriptValue."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-script = { workspace = true }
+cel-interpreter = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

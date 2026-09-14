@@ -1,0 +1,18 @@
+[package]
+name = "rushwind-script-config"
+description = "Config-source carrier for the Rust script contract: bridges any configuration-domain source engine (env, file, http, etcd, consul, ...) into a script source, so remote script delivery reuses the config domain's engine matrix."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-script = { workspace = true }
+rushwind-config = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
