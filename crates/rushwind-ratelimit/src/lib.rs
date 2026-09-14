@@ -4,6 +4,16 @@
 //! BBR, ...) live in `rushwind-ratelimit-*` crates and implement this
 //! trait so business code depends only on the contract.
 //!
+//! # Deferred engine: sentinel
+//!
+//! The Go sentinel engine adapts `sentinel-golang`, a Go-only
+//! flow-control SDK. A Rust port would have to reimplement Sentinel's
+//! core (token calculation, reject/throttle behaviors, warm-up,
+//! statistic windows) rather than wrap an adapter. The direct-
+//! threshold + reject rule shape maps 1:1 onto the token-bucket
+//! engine (burst = threshold) when that rule shape is all a caller
+//! needs.
+//!
 //! # The Go shapes, translated
 //!
 //! Go's `Allow() (ok, err)` packs the rejection sentinel `ErrLimited`
