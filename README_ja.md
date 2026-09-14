@@ -32,6 +32,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | config | `rushwind-config`（契約：`Source` trait + 既定の watch 能力メソッド、`FallbackSource` 優先順位合成と変更ストリーム統合）+ 2 エンジン：env（接頭辞付き環境変数）、file（単一ファイル + 親ディレクトリ監視、バースト統合と陳腐値抑制）；`go-wind-plugins/config` の対位 |
 | metrics | `rushwind-metrics`（契約：`Metrics` trait——counter/histogram/gauge、ラベル正規化ソート）+ 3 エンジン：prometheus（プル：レジストリ遅延登録 + テキスト形式露出）、otel（プッシュ：OTLP gRPC/HTTP エクスポート）、datadog（プッシュ：手書き DogStatsD over UDP + バッチバッファ）；`go-wind-plugins/metrics` の対位 |
 | script | `rushwind-script`（契約：`ScriptEngine` ライフサイクル核心 + 独立能力 trait 族——probe メソッドで Go の `As*` アサーションに対応、`FullEngine` 集約ブランケット実装；`ScriptValue` データブリッジ；名前キーのファクトリーレジストリ、固定・自動拡張の両エンジンプール、`Manager`；ローカルソースフレームワーク層——メモリ、ファイル（mtime ポーリング監視）、静的ツリー + 接頭辞結合、二戦略マルチソース集約、TTL と監視駆動失効付きキャッシュ、変換チェーン）；`go-scripts` の対位 |
+| http | `rushwind-http`（HTTP エッジ：gRPC 整列のエラー封筒 `HttpError`——code/reason/message/details、`AuthnError`/`StorageError` の組み込み変換；リクエストミドルウェアスタック recovery / request-id / logging / CORS / timeout と `HttpEdge` アセンブラ；`with_authn` / `with_authorization` で認証・認可契約を axum ルートに接続、`Authenticated` エクストラクター；feature ゲートの `/healthz`+`/readyz` と `/metrics` マウント）；`go-wind-plugins/transport/http/middleware` の対位、設計は [docs/http-edge.md](./docs/http-edge.md) |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
 ## レイアウト
@@ -43,6 +44,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-transport-axum` | axum アダプター：`Router` をライフサイクルの下で提供；シャットダウン対応はアーキテクチャ文書参照 |
 | `crates/rushwind-transport-ws` | WS セッションルートビルダー：ゲートチェーン + アドミッション + セッションシャットダウンバス |
 | `crates/rushwind-transport-quic` | QUIC アダプター：quinn 受け入れループをライフサイクルに接続、フルセッションチェーン；`stop()` は実釈放（Endpoint::close） |
+| `crates/rushwind-http` | HTTP エッジ：エラー封筒 + リクエストミドルウェアスタック（recovery / request-id / logging / CORS / timeout）+ 認証・認可ブリッジ + ヘルス/メトリクスのマウント——[docs/http-edge.md](./docs/http-edge.md) 参照 |
 | `crates/rushwind-authn` | 認証契約：`Authenticator` trait（抽出/検証の両半分）、`AuthClaims` クレームバッグ、エラー分類学、`AuthenticationGate` ゲート接続層——[docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語）参照 |
 | `crates/rushwind-authn-apikey` | API キー・エンジン：静的キー集合 / キーごとのクレーム / 検証コールバック |
 | `crates/rushwind-authn-basicauth` | Basic-Auth エンジン：RFC 7617 資格情報を静的ユーザーテーブルまたは検証コールバックに対して |

@@ -32,6 +32,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | config | `rushwind-config`（契约：`Source` trait + 能力默认方法 + `FallbackSource` 优先级合成与变更流合并）+ 双引擎：env（环境变量 + 前缀）、file（单文件 + 父目录监视，突发合并 + 陈旧值抑制）；对位前作 `go-wind-plugins/config` |
 | metrics | `rushwind-metrics`（契约：`Metrics` trait——counter/histogram/gauge，标签规范化排序）+ 三引擎：prometheus（拉：注册表懒注册 + 文本格式暴露）、otel（推：OTLP gRPC/HTTP 导出）、datadog（推：手写 DogStatsD over UDP + 批量缓冲）；对位前作 `go-wind-plugins/metrics` |
 | script | `rushwind-script`（契约：`ScriptEngine` 生命周期核心 + 独立能力 trait 族，probe 方法对位 Go `As*` 断言，`FullEngine` 聚合毯实现；`ScriptValue` 数据桥；名称键工厂注册表、固定与自动扩容引擎池、`Manager`；本地源框架层：memory、file（mtime 轮询监视）、静态树 + 前缀、双策略多源聚合、TTL 与失效监视缓存、变换链）；对位前作 `go-scripts` |
+| http | `rushwind-http`（HTTP 边缘：gRPC 对齐的错误信封 `HttpError`——code/reason/message/details，`AuthnError`/`StorageError` 内置转换；请求中间件栈 recovery / request-id / logging / CORS / timeout 与 `HttpEdge` 装配器；`with_authn` / `with_authorization` 把认证鉴权契约接上 axum 路由，`Authenticated` 提取器；feature 门控的 `/healthz`+`/readyz` 与 `/metrics` 挂载）；对位前作 `go-wind-plugins/transport/http/middleware`，设计见 [docs/http-edge.md](./docs/http-edge.md) |
 | P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
 | 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
@@ -45,6 +46,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-transport-ws` | WS 会话路由构建器：门链 + 准入策略 + 会话停机总线，契约见会话中间件文档 |
 | `crates/rushwind-transport-quic` | QUIC 适配器：quinn 接受循环接入生命周期，全套会话链；`stop()` 为真实释放（Endpoint::close） |
 | `crates/rushwind-transport-mqtt` | MQTT 消费桥：订阅外部 broker，重连退避 + 订阅重建，串行泵入 handler |
+| `crates/rushwind-http` | HTTP 边缘：错误信封 + 请求中间件栈（recovery / request-id / logging / CORS / timeout）+ 认证鉴权桥 + 健康/指标挂载，见 [docs/http-edge.md](./docs/http-edge.md) |
 | `crates/rushwind-bootstrap` | 配置驱动装配：YAML → 存储引擎 + HTTP 服务器 + 路由包，汇入单一生命周期 |
 | `crates/rushwind-registry` | 注册-only registry 契约：`Registrar` trait + 与 go-wind 字节对齐的键布局/线格式（golden 钉死） |
 | `crates/rushwind-registry-etcd` | etcd 适配器：租约 TTL + 自愈 keepalive，句柄 Drop 回退过期；live 套件（CI etcd 容器）钉死互操作 |

@@ -1,0 +1,38 @@
+[package]
+name = "rushwind-http"
+description = "The HTTP edge for RushWind: a gRPC-aligned error envelope, the request middleware stack (recovery, request id, logging, CORS, timeout), and the authn/authz bridges from the security contracts onto axum."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# /healthz + /readyz mounts over the health aggregator. Optional because the
+# health crate's HTTP checker carries reqwest.
+health = ["dep:rushwind-health"]
+# /metrics mount over the Prometheus reporter. Optional because the
+# prometheus client is a heavyweight third-party tree.
+metrics = ["dep:rushwind-metrics-prometheus"]
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["json"] }
+futures = { workspace = true }
+getrandom = { workspace = true }
+rushwind-authn = { workspace = true }
+rushwind-authz = { workspace = true }
+rushwind-storage = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+tower-http = { version = "0.6", default-features = false, features = ["cors"] }
+tracing = { workspace = true }
+rushwind-health = { workspace = true, optional = true }
+rushwind-metrics-prometheus = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+tower = { version = "0.5", features = ["util"] }

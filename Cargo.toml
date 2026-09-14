@@ -100,6 +100,7 @@ rushwind-encoding-cbor = { path = "crates/rushwind-encoding-cbor", version = "0.
 rushwind-encoding-bson = { path = "crates/rushwind-encoding-bson", version = "0.0.1" }
 rushwind-encoding-xml = { path = "crates/rushwind-encoding-xml", version = "0.0.1" }
 rushwind-encoding-proto = { path = "crates/rushwind-encoding-proto", version = "0.0.1" }
+rushwind-http = { path = "crates/rushwind-http", version = "0.0.1" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 
