@@ -29,6 +29,7 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | P2 | `rushwind-transport-quic` (raw QUIC sessions + full session chain: gates/refuse, atomic admission, handshake deadline — delivered; h3/webtransport layering later); `rushwind-transport-mqtt` (external-broker consumer bridge — delivered); registration-only registry slice ← current |
 | storage | `rushwind-storage` (contract) + four engines: in-memory reference, SeaORM (SQLite/PostgreSQL/MySQL), MongoDB; cross-cutting `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe` (transparent decorators); the `rushwind-storage-tree` algorithm brick; `rushwind-storage-proto` (proto-defined contract + protojson + AIP text syntax); `rushwind-storage-macros` (DTO mapping derives); counterpart of [go-crud](https://github.com/tx7do/go-crud) |
 | auth | `rushwind-authn` / `rushwind-authz` (contracts) + the engine matrix: seven authentication engines (apikey / basicauth / hmac / jwt / noop / presharedkey / session), three authorization engines (acl / rbac / noop); `AuthenticationGate` adapts an authenticator onto the session gate chain — contracts in [docs/security-authn-authz.md](./docs/security-authn-authz.md) (Chinese) |
+| config | `rushwind-config` (contract: the `Source` trait with defaulted watch capabilities, plus `FallbackSource` priority composition with merged change streams) + two engines: env (environment variables with a prefix), file (one file, parent-directory watched with burst coalescing and stale-value suppression); counterpart of `go-wind-plugins/config` |
 | P3 | `rushwind-bootstrap` (serde YAML config-driven assembly: storage factories + route packs + server factories) — delivered |
 | next | h3/webtransport layering, mqtt handler registry, kcp (if legacy interop), rushwind-protocols standalone repo |
 
@@ -55,6 +56,9 @@ Compared to the Go predecessor [go-wind](https://github.com/tx7do/go-wind) (the 
 | `crates/rushwind-authz-acl` | ACL engine: ordered allow/deny rules with wildcard matching, default-deny, deny-overrides |
 | `crates/rushwind-authz-rbac` | RBAC engine: role→permission and user→role maps, transitive inheritance with cycle guards |
 | `crates/rushwind-authz-noop` | noop engine: every verdict passes, every filter returns empty |
+| `crates/rushwind-config` | the configuration-source contract: the `Source` trait (load plus defaulted watch/watch_value capabilities), the `SignalStream`/`ValueStream` stream contracts, and `FallbackSource` — priority composition where the first answer wins and change streams merge into the effective value, no task boundaries |
+| `crates/rushwind-config-env` | environment-variable engine: default key + prefix resolution; an unset variable is absence, not an error |
+| `crates/rushwind-config-file` | file engine: whole-file reads + parent-directory watching (editor atomic-rename safe), event bursts coalesced, stale values suppressed by content, stream drop stops the watch |
 | `crates/rushwind-storage` | storage contracts: `Repository` trait, three paging strategies (Page/Offset/Token), filter tree, five-level viewer tenancy, field mask, audit hook |
 | `crates/rushwind-storage-memory` | in-memory reference engine: the semantic baseline for filters/sorting/cursors, zero dependencies |
 | `crates/rushwind-storage-seaorm` | SeaORM engine: SQLite/PostgreSQL/MySQL all enabled, per-dialect SQL pinned by snapshot tests, SQLite passes the suite, live suites run in CI containers |

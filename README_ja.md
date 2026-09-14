@@ -29,6 +29,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | P2 | `rushwind-transport-quic`（素の QUIC セッション + フルセッションチェーン：ゲート/refuse、原子アドミッション、ハンドシェイク期限——提供済み；h3/webtransport は後から積み上げ）；`rushwind-transport-mqtt`（外部ブローカー消費ブリッジ）、登録のみのレジストリ薄片 ← 現在 |
 | storage | `rushwind-storage`（契約）+ 4 エンジン：インメモリ参照、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横断層 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明デコレーター）；アルゴリズム積木 `rushwind-storage-tree`（木走査）；`rushwind-storage-proto`（proto 定義契約 + protojson + AIP テキスト構文）；`rushwind-storage-macros`（DTO マッピング derive）；[go-crud](https://github.com/tx7do/go-crud) の対位 |
 | auth | `rushwind-authn` / `rushwind-authz`（契約）+ エンジン行列：認証 7 エンジン（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、認可 3 エンジン（acl / rbac / noop）；`AuthenticationGate` が認証エンジンをセッションのゲートチェーンに接続——契約は [docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語） |
+| config | `rushwind-config`（契約：`Source` trait + 既定の watch 能力メソッド、`FallbackSource` 優先順位合成と変更ストリーム統合）+ 2 エンジン：env（接頭辞付き環境変数）、file（単一ファイル + 親ディレクトリ監視、バースト統合と陳腐値抑制）；`go-wind-plugins/config` の対位 |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
 ## レイアウト
@@ -52,6 +53,9 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-authz-acl` | ACL エンジン：順序付き allow/deny ルール + ワイルドカード照合、既定拒否・拒否優先 |
 | `crates/rushwind-authz-rbac` | RBAC エンジン：役割→権限、ユーザー→役割の双表、循環検出付きの推移的継承 |
 | `crates/rushwind-authz-noop` | noop エンジン：単一評決はすべて通過、一括フィルタはすべて空 |
+| `crates/rushwind-config` | 設定ソース契約：`Source` trait（load + 既定の watch/watch_value 能力メソッド）、`SignalStream`/`ValueStream` ストリーム契約、`FallbackSource`——最初の回答が勝つ優先順位合成と、実効値への変更ストリーム統合、タスク境界なし |
+| `crates/rushwind-config-env` | 環境変数エンジン：既定キー + 接頭辞解決、未設定変数は「不在」であってエラーではない |
+| `crates/rushwind-config-file` | ファイルエンジン：ファイル全体の読み取り + 親ディレクトリ監視（エディタの原子リネームに強い）、イベントバースト統合、内容による陳腐値抑制、ストリームの drop で監視停止 |
 | `crates/rushwind-storage` | ストレージ契約：`Repository` trait、3 種のページング（Page/Offset/Token）、フィルターツリー、5 段階 Viewer テナンシー、FieldMask、監査フック |
 | `crates/rushwind-storage-memory` | インメモリ参照エンジン：フィルター/ソート/カーソルの意味論的基準、依存ゼロ |
 | `crates/rushwind-storage-seaorm` | SeaORM エンジン：SQLite/PostgreSQL/MySQL の 3 バックエンド同梱、方言ごとの SQL はスナップショットで固定、SQLite がスイート合格、live スイートは CI コンテナで実行 |

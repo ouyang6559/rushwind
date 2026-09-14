@@ -29,6 +29,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | P2 | `rushwind-transport-quic`（裸 QUIC 会话 + 全套会话链：门/refuse、原子准入、握手截止）；`rushwind-transport-mqtt`（外部 broker 消费桥）；注册-only registry 薄片（`rushwind-registry` + etcd 适配器，线格式与 go-wind 字节对齐）——全部已交付 |
 | storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横切层 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明装饰器）；算法积木 `rushwind-storage-tree`（树形遍历）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；`rushwind-storage-macros`（DTO 映射 derive）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
 | auth | `rushwind-authn` / `rushwind-authz`（契约）+ 引擎矩阵：认证七引擎（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、鉴权三引擎（acl / rbac / noop）；`AuthenticationGate` 把认证引擎接入会话门链，契约见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
+| config | `rushwind-config`（契约：`Source` trait + 能力默认方法 + `FallbackSource` 优先级合成与变更流合并）+ 双引擎：env（环境变量 + 前缀）、file（单文件 + 父目录监视，突发合并 + 陈旧值抑制）；对位前作 `go-wind-plugins/config` |
 | P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
 | 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
@@ -57,6 +58,9 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-authz-acl` | ACL 引擎：有序 allow/deny 规则 + 通配匹配，默认拒绝、拒绝优先 |
 | `crates/rushwind-authz-rbac` | RBAC 引擎：角色→权限、用户→角色双表，传递继承带环检测 |
 | `crates/rushwind-authz-noop` | Noop 引擎：单裁决全通过、批量过滤全空 |
+| `crates/rushwind-config` | 配置源契约：`Source` trait（load + 可选 watch/watch_value 能力默认方法）、`SignalStream`/`ValueStream` 流契约、`FallbackSource` 优先级合成（首答胜出 + 有效值变更流合并，无任务边界） |
+| `crates/rushwind-config-env` | 环境变量引擎：默认键 + 前缀解析，未设变量为"缺席"而非错误 |
+| `crates/rushwind-config-file` | 文件引擎：整文件读取 + 父目录监视（编辑器原子重命名安全），事件突发合并、陈旧值内容抑制，流 Drop 即停 |
 | `crates/rushwind-storage` | 存储契约：`Repository` trait、三种分页（Page/Offset/Token）、过滤器树、Viewer 五级租户、FieldMask、审计钩子 |
 | `crates/rushwind-storage-memory` | 内存参考引擎：过滤器/排序/游标的语义基准，零依赖 |
 | `crates/rushwind-storage-seaorm` | SeaORM 引擎：SQLite/PostgreSQL/MySQL 三后端同启，三方言 SQL 快照钉死渲染，SQLite 过一致性套件，live 套件跑 CI 容器 |
