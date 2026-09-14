@@ -1,0 +1,18 @@
+[package]
+name = "rushwind-encoding-proto"
+description = "Protobuf engine for the RushWind encoding contract: binary proto over prost, as a typed sidecar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-encoding = { workspace = true }
+prost = { workspace = true }
+
+[dev-dependencies]
+prost = { workspace = true, features = ["derive"] }

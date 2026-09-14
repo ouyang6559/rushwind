@@ -1,0 +1,21 @@
+[package]
+name = "rushwind-encoding-cbor"
+description = "CBOR engine for the RushWind encoding contract: ciborium behind the named-codec registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+erased-serde = { workspace = true }
+rushwind-encoding = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+ciborium = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }

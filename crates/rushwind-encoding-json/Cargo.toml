@@ -1,0 +1,20 @@
+[package]
+name = "rushwind-encoding-json"
+description = "JSON engine for the RushWind encoding contract: serde_json behind the named-codec registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+erased-serde = { workspace = true }
+rushwind-encoding = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
