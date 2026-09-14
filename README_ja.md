@@ -30,6 +30,7 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | storage | `rushwind-storage`（契約）+ 4 エンジン：インメモリ参照、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横断層 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明デコレーター）；アルゴリズム積木 `rushwind-storage-tree`（木走査）；`rushwind-storage-proto`（proto 定義契約 + protojson + AIP テキスト構文）；`rushwind-storage-macros`（DTO マッピング derive）；[go-crud](https://github.com/tx7do/go-crud) の対位 |
 | auth | `rushwind-authn` / `rushwind-authz`（契約）+ エンジン行列：認証 7 エンジン（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、認可 3 エンジン（acl / rbac / noop）；`AuthenticationGate` が認証エンジンをセッションのゲートチェーンに接続——契約は [docs/security-authn-authz.md](./docs/security-authn-authz.md)（中国語） |
 | config | `rushwind-config`（契約：`Source` trait + 既定の watch 能力メソッド、`FallbackSource` 優先順位合成と変更ストリーム統合）+ 2 エンジン：env（接頭辞付き環境変数）、file（単一ファイル + 親ディレクトリ監視、バースト統合と陳腐値抑制）；`go-wind-plugins/config` の対位 |
+| metrics | `rushwind-metrics`（契約：`Metrics` trait——counter/histogram/gauge、ラベル正規化ソート）+ 3 エンジン：prometheus（プル：レジストリ遅延登録 + テキスト形式露出）、otel（プッシュ：OTLP gRPC/HTTP エクスポート）、datadog（プッシュ：手書き DogStatsD over UDP + バッチバッファ）；`go-wind-plugins/metrics` の対位 |
 | P3 | `rushwind-bootstrap`（serde による設定駆動アセンブリ） |
 
 ## レイアウト
@@ -56,6 +57,10 @@ Go の前身 [go-wind](https://github.com/tx7do/go-wind)（同一哲学の Go �
 | `crates/rushwind-config` | 設定ソース契約：`Source` trait（load + 既定の watch/watch_value 能力メソッド）、`SignalStream`/`ValueStream` ストリーム契約、`FallbackSource`——最初の回答が勝つ優先順位合成と、実効値への変更ストリーム統合、タスク境界なし |
 | `crates/rushwind-config-env` | 環境変数エンジン：既定キー + 接頭辞解決、未設定変数は「不在」であってエラーではない |
 | `crates/rushwind-config-file` | ファイルエンジン：ファイル全体の読み取り + 親ディレクトリ監視（エディタの原子リネームに強い）、イベントバースト統合、内容による陳腐値抑制、ストリームの drop で監視停止 |
+| `crates/rushwind-metrics` | メトリクス契約：`Metrics` trait（counter 加算 / histogram 記録 / gauge 設定）、ラベル正規化ソート、記録が呼び出し元を失敗させない |
+| `crates/rushwind-metrics-prometheus` | Prometheus エンジン：名前ごとの遅延登録 + 種類ごとのキャッシュ表、`encode()` でテキスト形式を描画し /metrics ルートに |
+| `crates/rushwind-metrics-otel` | OTel エンジン：OTLP エクスポート（gRPC / HTTP バイナリ protobuf）、計器の遅延生成キャッシュ、gauge は up-down counter で代用 |
+| `crates/rushwind-metrics-datadog` | Datadog エンジン：手書き DogStatsD ラインプロトコル over UDP、タグソート、サンプルレート接尾辞、任意バッチバッファ |
 | `crates/rushwind-storage` | ストレージ契約：`Repository` trait、3 種のページング（Page/Offset/Token）、フィルターツリー、5 段階 Viewer テナンシー、FieldMask、監査フック |
 | `crates/rushwind-storage-memory` | インメモリ参照エンジン：フィルター/ソート/カーソルの意味論的基準、依存ゼロ |
 | `crates/rushwind-storage-seaorm` | SeaORM エンジン：SQLite/PostgreSQL/MySQL の 3 バックエンド同梱、方言ごとの SQL はスナップショットで固定、SQLite がスイート合格、live スイートは CI コンテナで実行 |

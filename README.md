@@ -30,6 +30,7 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | storage | `rushwind-storage`（契约）+ 四引擎：内存参考、SeaORM（SQLite/PostgreSQL/MySQL）、MongoDB；横切层 `rushwind-storage-cache` / `rushwind-storage-soft-delete` / `rushwind-storage-observe`（透明装饰器）；算法积木 `rushwind-storage-tree`（树形遍历）；`rushwind-storage-proto`（proto 定义契约 + protojson + AIP 文本语法）；`rushwind-storage-macros`（DTO 映射 derive）；对位前作 [go-crud](https://github.com/tx7do/go-crud) |
 | auth | `rushwind-authn` / `rushwind-authz`（契约）+ 引擎矩阵：认证七引擎（apikey / basicauth / hmac / jwt / noop / presharedkey / session）、鉴权三引擎（acl / rbac / noop）；`AuthenticationGate` 把认证引擎接入会话门链，契约见 [docs/security-authn-authz.md](./docs/security-authn-authz.md) |
 | config | `rushwind-config`（契约：`Source` trait + 能力默认方法 + `FallbackSource` 优先级合成与变更流合并）+ 双引擎：env（环境变量 + 前缀）、file（单文件 + 父目录监视，突发合并 + 陈旧值抑制）；对位前作 `go-wind-plugins/config` |
+| metrics | `rushwind-metrics`（契约：`Metrics` trait——counter/histogram/gauge，标签规范化排序）+ 三引擎：prometheus（拉：注册表懒注册 + 文本格式暴露）、otel（推：OTLP gRPC/HTTP 导出）、datadog（推：手写 DogStatsD over UDP + 批量缓冲）；对位前作 `go-wind-plugins/metrics` |
 | P3 | `rushwind-bootstrap`（serde YAML 配置驱动装配：存储工厂 + 路由包 + 服务器工厂三注册表）——已交付 |
 | 后续 | h3/webtransport 叠加、mqtt handler 注册、kcp（存量互操作时）、rushwind-protocols 独立仓 |
 
@@ -61,6 +62,10 @@ RushWind 只做一件事：**可靠的多服务器生命周期编排**。核心�
 | `crates/rushwind-config` | 配置源契约：`Source` trait（load + 可选 watch/watch_value 能力默认方法）、`SignalStream`/`ValueStream` 流契约、`FallbackSource` 优先级合成（首答胜出 + 有效值变更流合并，无任务边界） |
 | `crates/rushwind-config-env` | 环境变量引擎：默认键 + 前缀解析，未设变量为"缺席"而非错误 |
 | `crates/rushwind-config-file` | 文件引擎：整文件读取 + 父目录监视（编辑器原子重命名安全），事件突发合并、陈旧值内容抑制，流 Drop 即停 |
+| `crates/rushwind-metrics` | 指标契约：`Metrics` trait（counter 累加 / histogram 记录 / gauge 设置），标签规范化排序，记录永不失败调用方 |
+| `crates/rushwind-metrics-prometheus` | Prometheus 引擎：按名懒注册 + 每类缓存表，`encode()` 渲染文本格式挂 /metrics 路由 |
+| `crates/rushwind-metrics-otel` | OTel 引擎：OTLP 导出（gRPC/HTTP 二进制 protobuf），仪表懒创建缓存，gauge 以 up-down counter 代位 |
+| `crates/rushwind-metrics-datadog` | Datadog 引擎：手写 DogStatsD 线协议 over UDP，标签排序、采样率后缀、可选批量缓冲 |
 | `crates/rushwind-storage` | 存储契约：`Repository` trait、三种分页（Page/Offset/Token）、过滤器树、Viewer 五级租户、FieldMask、审计钩子 |
 | `crates/rushwind-storage-memory` | 内存参考引擎：过滤器/排序/游标的语义基准，零依赖 |
 | `crates/rushwind-storage-seaorm` | SeaORM 引擎：SQLite/PostgreSQL/MySQL 三后端同启，三方言 SQL 快照钉死渲染，SQLite 过一致性套件，live 套件跑 CI 容器 |
