@@ -1,0 +1,13 @@
+[package]
+name = "rushwind-metrics"
+description = "Metrics-reporting contract for RushWind: the Metrics trait over counters, histograms, and gauges, engine-agnostic."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

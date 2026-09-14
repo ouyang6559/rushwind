@@ -39,6 +39,9 @@ rushwind-health = { path = "crates/rushwind-health", version = "0.0.1" }
 rushwind-ratelimit = { path = "crates/rushwind-ratelimit", version = "0.0.1" }
 rushwind-ratelimit-tokenbucket = { path = "crates/rushwind-ratelimit-tokenbucket", version = "0.0.1" }
 rushwind-ratelimit-bbr = { path = "crates/rushwind-ratelimit-bbr", version = "0.0.1" }
+rushwind-metrics-datadog = { path = "crates/rushwind-metrics-datadog", version = "0.0.1" }
+rushwind-metrics-otel = { path = "crates/rushwind-metrics-otel", version = "0.0.1" }
+rushwind-metrics-prometheus = { path = "crates/rushwind-metrics-prometheus", version = "0.0.1" }
 rushwind-config = { path = "crates/rushwind-config", version = "0.0.1" }
 rushwind-config-env = { path = "crates/rushwind-config-env", version = "0.0.1" }
 rushwind-config-file = { path = "crates/rushwind-config-file", version = "0.0.1" }
@@ -48,6 +51,8 @@ rushwind-broker-stomp = { path = "crates/rushwind-broker-stomp", version = "0.0.
 rushwind-oss = { path = "crates/rushwind-oss", version = "0.0.1" }
 rushwind-oss-s3 = { path = "crates/rushwind-oss-s3", version = "0.0.1" }
 rushwind-ai-openai = { path = "crates/rushwind-ai-openai", version = "0.0.1" }
+rushwind-metrics = { path = "crates/rushwind-metrics", version = "0.0.1" }
+prometheus = "0.13"
 rushwind-authn = { path = "crates/rushwind-authn", version = "0.0.1" }
 rushwind-authn-apikey = { path = "crates/rushwind-authn-apikey", version = "0.0.1" }
 rushwind-authn-basicauth = { path = "crates/rushwind-authn-basicauth", version = "0.0.1" }
@@ -133,6 +138,12 @@ sqlx = { version = "0.8", default-features = false, features = [
     "postgres",
     "chrono",
 ] }
+
+# OpenTelemetry API, SDK, and the OTLP exporter behind the metrics otel
+# engine: gRPC (tonic) and HTTP (proto) transports both enabled.
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto"] }
 
 # Directory watching for the config file engine: the parent-dir watch
 # survives the atomic rename editors save through.
