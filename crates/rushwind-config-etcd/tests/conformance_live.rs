@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use rushwind_config::{Source, ValueStream};
+use rushwind_config::Source;
 use rushwind_config_etcd::EtcdSource;
 
 fn endpoints() -> Vec<String> {

@@ -80,7 +80,7 @@ async fn watch_pushes_changed_values() {
     // test waits).
     let unchanged = tokio::time::timeout(Duration::from_secs(2), stream.next()).await;
     assert!(
-        matches!(unchanged, Err(_)),
+        unchanged.is_err(),
         "an unchanged body must not re-push within the window"
     );
 }
