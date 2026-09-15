@@ -45,8 +45,12 @@ type StdResult<T, E> = std::result::Result<T, E>;
 use opentelemetry::Context;
 use opentelemetry_otlp::SpanExporter;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, WithTonicConfig};
-use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
+use opentelemetry_sdk::trace::Sampler;
 use opentelemetry_sdk::Resource;
+
+/// Re-exported so bootstrap-side assembly can name the provider type
+/// the builder yields without depending on the SDK crate directly.
+pub use opentelemetry_sdk::trace::SdkTracerProvider;
 
 /// The default OTLP export batch timeout — the Go default.
 const DEFAULT_BATCH_TIMEOUT: Duration = Duration::from_secs(5);
@@ -140,6 +144,63 @@ impl TracerProviderBuilder {
         self.tracer_name
             .clone()
             .unwrap_or_else(|| DEFAULT_TRACER_NAME.to_string())
+    }
+
+    /// Constructs from the bootstrap factory's settings wire shape: the
+    /// OTLP endpoint, the transport (`"http"` the HTTP-protobuf
+    /// exporter, anything else the gRPC default), the TLS skip, the
+    /// sample ratio, the batch and export timeouts, the service
+    /// name/version, and the exporter headers — every field optional,
+    /// an absent field the builder default. The only failure is the
+    /// settings parse; every network side effect stays with
+    /// [`TracerProviderBuilder::build`].
+    pub fn from_settings(settings: serde_json::Value) -> StdResult<Self, serde_json::Error> {
+        #[derive(Debug, Default, serde::Deserialize)]
+        #[serde(default)]
+        struct TracerWire {
+            endpoint: Option<String>,
+            transport: Option<String>,
+            insecure: Option<bool>,
+            sample_ratio: Option<f64>,
+            batch_timeout_ms: Option<u64>,
+            export_timeout_ms: Option<u64>,
+            service_name: Option<String>,
+            service_version: Option<String>,
+            headers: Option<HashMap<String, String>>,
+        }
+        let wire: TracerWire = serde_json::from_value(settings)?;
+        let mut options = OtlpOptions::default();
+        if let Some(endpoint) = wire.endpoint {
+            options.endpoint = endpoint;
+        }
+        if let Some(transport) = wire.transport {
+            options.transport = match transport.as_str() {
+                "http" => Transport::Http,
+                _ => Transport::Grpc,
+            };
+        }
+        if let Some(insecure) = wire.insecure {
+            options.insecure = insecure;
+        }
+        if let Some(sample_ratio) = wire.sample_ratio {
+            options.sample_ratio = sample_ratio;
+        }
+        if let Some(ms) = wire.batch_timeout_ms {
+            options.batch_timeout = Duration::from_millis(ms);
+        }
+        if let Some(ms) = wire.export_timeout_ms {
+            options.export_timeout = Duration::from_millis(ms);
+        }
+        if let Some(name) = wire.service_name {
+            options.service_name = name;
+        }
+        if let Some(version) = wire.service_version {
+            options.service_version = version;
+        }
+        if let Some(headers) = wire.headers {
+            options.headers = headers.into_iter().collect();
+        }
+        Ok(Self::new(options))
     }
 
     /// Builds the [`SdkTracerProvider`] — the Go `New` minus the
@@ -250,5 +311,26 @@ pub fn extract(carrier: &MapCarrier) -> Context {
 pub fn inject(context: &opentelemetry::Context, carrier: &mut MapCarrier) {
     global::get_text_map_propagator(|propagator| {
         propagator.inject_context(context, carrier);
-    });
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_wire_parses_and_rejects() {
+        // The builder is inert until build(); parsing touches no
+        // network and spins no runtime.
+        let builder = TracerProviderBuilder::from_settings(serde_json::json!({
+            "endpoint": "collector:4317",
+            "transport": "http"
+        }))
+        .expect("wire must parse");
+        assert_eq!(builder.resolved_tracer_name(), DEFAULT_TRACER_NAME);
+        assert!(
+            TracerProviderBuilder::from_settings(serde_json::json!({ "endpoint": 7 })).is_err(),
+            "a non-string endpoint must fail the parse"
+        );
+    }
 }

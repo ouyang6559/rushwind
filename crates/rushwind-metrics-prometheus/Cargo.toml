@@ -13,6 +13,8 @@ workspace = true
 [dependencies]
 rushwind-metrics = { workspace = true }
 prometheus = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

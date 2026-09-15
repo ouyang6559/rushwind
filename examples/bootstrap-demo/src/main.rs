@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use axum::routing::get;
 use axum::Router;
-use rushwind_bootstrap::{Bootstrap, BootstrapError, RouteInput};
+use rushwind_bootstrap::{Bootstrap, BootstrapError, RouteInput, RouteSurface};
 use rushwind_storage::{ColumnKind, Repository, Schema};
 use rushwind_storage_memory::MemoryRepo;
 use rushwind_transport::StopSignal;
@@ -35,7 +35,9 @@ storage_endpoints:
 servers:
   - kind: http
     bind: 127.0.0.1:0
-    route_packs: [health, wired]
+    route_packs:
+      - name: health
+      - name: wired
 "#;
 
 /// The application schema — captured by the storage factory, because the
@@ -57,18 +59,20 @@ fn assemble() -> Result<Bootstrap, BootstrapError> {
     });
     Ok(bootstrap
         .route_pack("health", |_input| {
-            Ok(Router::new().route("/health", get(|| async { "ok" })))
+            Ok(RouteSurface::new(
+                Router::new().route("/health", get(|| async { "ok" })),
+            ))
         })
         .route_pack("wired", |input: RouteInput| {
             // Proves the configured storage reaches route packs.
             let repository = input.repository.clone();
-            Ok(Router::new().route(
+            Ok(RouteSurface::new(Router::new().route(
                 "/wired",
                 get(move || {
                     let repository = repository.clone();
                     async move { format!("repo={}", repository.is_some()) }
                 }),
-            ))
+            )))
         }))
 }
 

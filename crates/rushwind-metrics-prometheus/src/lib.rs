@@ -114,6 +114,27 @@ impl PrometheusMetrics {
         }
     }
 
+    /// Constructs from the bootstrap factory's settings wire shape: the
+    /// optional namespace and subsystem label prefixes, everything else
+    /// the builder default. The only failure is the settings parse.
+    pub fn from_settings(settings: serde_json::Value) -> Result<Self, serde_json::Error> {
+        #[derive(Debug, Default, serde::Deserialize)]
+        #[serde(default)]
+        struct PrometheusSettings {
+            namespace: Option<String>,
+            subsystem: Option<String>,
+        }
+        let wire: PrometheusSettings = serde_json::from_value(settings)?;
+        let mut options = PrometheusOptions::new();
+        if let Some(namespace) = wire.namespace {
+            options = options.with_namespace(&namespace);
+        }
+        if let Some(subsystem) = wire.subsystem {
+            options = options.with_subsystem(&subsystem);
+        }
+        Ok(Self::new(options))
+    }
+
     /// The registry this provider gathers into — hand it to a custom
     /// exposition path, or use [`PrometheusMetrics::encode`].
     pub fn registry(&self) -> &prometheus::Registry {
@@ -322,6 +343,25 @@ mod tests {
 
     fn text(provider: &PrometheusMetrics) -> String {
         provider.encode().expect("text exposition renders")
+    }
+
+    #[test]
+    fn settings_wire_parses_prefixes() {
+        let provider = PrometheusMetrics::from_settings(serde_json::json!({
+            "namespace": "wirens"
+        }))
+        .expect("wire must parse");
+        provider.counter("requests_total", 1.0, &[]);
+        let body = text(&provider);
+        assert!(body.contains("wirens_"), "{body}");
+    }
+
+    #[test]
+    fn settings_wire_rejects_malformed() {
+        assert!(
+            PrometheusMetrics::from_settings(serde_json::json!({ "namespace": 7 })).is_err(),
+            "a non-string namespace must fail the parse"
+        );
     }
 
     #[test]
