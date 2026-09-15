@@ -158,6 +158,11 @@ getrandom = "0.3"
 # connection pooling and transactions. All three SQL backends ship enabled —
 # SQLite, PostgreSQL, MySQL — so one adapter serves the whole SQL family.
 # The contract crate stays dependency-free.
+sea-orm-migration = { version = "2.0", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "sqlx-postgres",
+] }
+rushwind-storage-seaorm-migration = { path = "crates/rushwind-storage-seaorm-migration", version = "0.0.1" }
 sea-orm = { version = "2.0", default-features = false, features = [
     "runtime-tokio-rustls",
     "sqlx-sqlite",
