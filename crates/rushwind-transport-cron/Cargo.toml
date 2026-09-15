@@ -1,0 +1,17 @@
+[package]
+name = "rushwind-transport-cron"
+description = "RushWind cron transport: a minute-aligned periodic scheduler that implements the Server lifecycle trait, firing registered jobs when their cron spec matches the wall clock."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rushwind-transport = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true, features = ["time", "sync", "macros", "rt"] }
+futures = { workspace = true }
