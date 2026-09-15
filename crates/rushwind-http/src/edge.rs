@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use axum::Router;
 
-use crate::{cors, logging, recovery, request_id, timeout};
+use crate::{cors, cors_compat, logging, recovery, request_id, timeout};
 
 /// The request-stack builder. Defaults: recovery, request-id and
 /// logging on; CORS and timeout off until configured. [`HttpEdge::wrap`]
@@ -18,6 +18,10 @@ pub struct HttpEdge {
     request_id: Option<Arc<dyn Fn() -> String + Send + Sync>>,
     logging: bool,
     cors: Option<cors::CorsOptions>,
+    /// Whether the CORS options route through the gorilla-compatible
+    /// layer ([`crate::cors_compat`]) instead of tower-http — the parity
+    /// choice for deployments whose reference wires gorilla/handlers.
+    cors_compat: bool,
     timeout: Option<Duration>,
     recovery: bool,
 }
@@ -35,6 +39,7 @@ impl HttpEdge {
             request_id: Some(Arc::new(request_id::generate_request_id)),
             logging: true,
             cors: None,
+            cors_compat: false,
             timeout: None,
             recovery: true,
         }
@@ -73,6 +78,14 @@ impl HttpEdge {
         self
     }
 
+    /// Enables CORS with the given policy through the gorilla-compatible
+    /// layer (see [`crate::cors_compat`]).
+    pub fn with_cors_compat(mut self, options: cors::CorsOptions) -> Self {
+        self.cors = Some(options);
+        self.cors_compat = true;
+        self
+    }
+
     /// Bounds every request's downstream execution by `budget`.
     pub fn with_timeout(mut self, budget: Duration) -> Self {
         self.timeout = Some(budget);
@@ -93,7 +106,11 @@ impl HttpEdge {
             wrapped = timeout::with_timeout(wrapped, budget);
         }
         if let Some(options) = &self.cors {
-            wrapped = cors::with_cors(wrapped, options.clone());
+            wrapped = if self.cors_compat {
+                cors_compat::with_cors_compat(wrapped, options.clone())
+            } else {
+                cors::with_cors(wrapped, options.clone())
+            };
         }
         if self.logging {
             wrapped = logging::with_logging(wrapped);

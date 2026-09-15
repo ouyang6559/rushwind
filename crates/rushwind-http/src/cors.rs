@@ -28,12 +28,19 @@ pub const DEFAULT_EXPOSE_HEADERS: &[&str] = &[HEADER_X_REQUEST_ID];
 /// The CORS policy, the Go admin's `server.yaml` CORS block.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CorsOptions {
-    allow_origins: Vec<String>,
-    allow_credentials: bool,
-    allow_methods: Vec<String>,
-    allow_headers: Vec<String>,
-    expose_headers: Vec<String>,
-    max_age: Option<Duration>,
+    pub(crate) allow_origins: Vec<String>,
+    pub(crate) allow_credentials: bool,
+    pub(crate) allow_methods: Vec<String>,
+    pub(crate) allow_headers: Vec<String>,
+    pub(crate) expose_headers: Vec<String>,
+    pub(crate) max_age: Option<Duration>,
+    /// Opt-out of any `Access-Control-Allow-Methods` emission — the
+    /// tower-http "never called `allow_methods`" state, where preflights
+    /// get no method permission at all.
+    pub(crate) no_allow_methods: bool,
+    /// Opt-out of any `Access-Control-Allow-Headers` emission — the
+    /// tower-http "never called `allow_headers`" state.
+    pub(crate) no_allow_headers: bool,
 }
 
 impl CorsOptions {
@@ -73,8 +80,25 @@ impl CorsOptions {
         self
     }
 
+    /// Opts out of `Access-Control-Allow-Methods` emission entirely:
+    /// tower-http's `allow_methods` is never called, so every preflight
+    /// fails the method check and the header stays absent.
+    pub fn without_allow_methods(mut self) -> Self {
+        self.no_allow_methods = true;
+        self
+    }
+
+    /// Opts out of `Access-Control-Allow-Headers` emission entirely:
+    /// tower-http's `allow_headers` is never called.
+    pub fn without_allow_headers(mut self) -> Self {
+        self.no_allow_headers = true;
+        self
+    }
+
     /// Builds the tower-http layer — the only place that knows CORS
-    /// lives in tower-http.
+    /// lives in tower-http. The opt-outs leave tower-http's
+    /// `allow_methods`/`allow_headers` unset, matching the state of a
+    /// deployment that never wired those fields.
     pub(crate) fn to_layer(&self) -> CorsLayer {
         let any_origin = self.allow_origins.iter().any(|origin| origin == "*");
         let origin = if any_origin && self.allow_credentials {
@@ -91,25 +115,28 @@ impl CorsOptions {
             )
         };
 
-        let methods: Vec<Method> =
-            parse_or_default(&self.allow_methods, DEFAULT_ALLOW_METHODS, |m| {
-                Method::from_bytes(m.as_bytes()).ok()
-            });
-        let headers: Vec<HeaderName> =
-            parse_or_default(&self.allow_headers, DEFAULT_ALLOW_HEADERS, |header| {
-                HeaderName::from_lowercase(header.as_bytes()).ok()
-            });
+        let mut layer = CorsLayer::new()
+            .allow_origin(origin)
+            .allow_credentials(self.allow_credentials);
+        if !self.no_allow_methods {
+            let methods: Vec<Method> =
+                parse_or_default(&self.allow_methods, DEFAULT_ALLOW_METHODS, |m| {
+                    Method::from_bytes(m.as_bytes()).ok()
+                });
+            layer = layer.allow_methods(AllowMethods::list(methods));
+        }
+        if !self.no_allow_headers {
+            let headers: Vec<HeaderName> =
+                parse_or_default(&self.allow_headers, DEFAULT_ALLOW_HEADERS, |header| {
+                    HeaderName::from_lowercase(header.as_bytes()).ok()
+                });
+            layer = layer.allow_headers(AllowHeaders::list(headers));
+        }
         let expose: Vec<HeaderName> =
             parse_or_default(&self.expose_headers, DEFAULT_EXPOSE_HEADERS, |header| {
                 HeaderName::from_lowercase(header.as_bytes()).ok()
             });
-
-        let mut layer = CorsLayer::new()
-            .allow_origin(origin)
-            .allow_methods(AllowMethods::list(methods))
-            .allow_headers(AllowHeaders::list(headers))
-            .expose_headers(ExposeHeaders::list(expose))
-            .allow_credentials(self.allow_credentials);
+        layer = layer.expose_headers(ExposeHeaders::list(expose));
         if let Some(max_age) = self.max_age {
             layer = layer.max_age(max_age);
         }

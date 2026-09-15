@@ -83,6 +83,7 @@
 mod authn;
 mod authz;
 mod cors;
+mod cors_compat;
 mod edge;
 mod error;
 mod logging;
@@ -96,6 +97,7 @@ pub use authz::{
     with_authorization, with_authorization_claim, with_authorization_for, REASON_PERMISSION_DENIED,
 };
 pub use cors::{with_cors, CorsOptions};
+pub use cors_compat::with_cors_compat;
 pub use edge::HttpEdge;
 pub use error::{Code, ErrorEnvelope, HttpError, HttpResult};
 pub use error::{

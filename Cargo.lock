@@ -5565,10 +5565,13 @@ version = "0.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01b80ea363c31af2de2b92e3c07ed1156628f7838c4afb4df75ee78a37fedbd1"
 dependencies = [
+ "base64 0.22.1",
  "logos 0.16.1",
  "miette",
  "prost 0.14.4",
  "prost-types 0.14.4",
+ "serde",
+ "serde-value",
 ]
 
 [[package]]
@@ -6752,6 +6755,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rushwind-gen-http"
+version = "0.1.0"
+dependencies = [
+ "heck 0.5.0",
+ "prost-reflect",
+]
+
+[[package]]
 name = "rushwind-health"
 version = "0.0.1"
 dependencies = [
@@ -6781,6 +6792,20 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+]
+
+[[package]]
+name = "rushwind-http-binding"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "chrono",
+ "form_urlencoded",
+ "prost 0.14.4",
+ "prost-reflect",
+ "rushwind-authn",
+ "serde_json",
 ]
 
 [[package]]
