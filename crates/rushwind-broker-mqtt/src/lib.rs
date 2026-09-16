@@ -1,12 +1,11 @@
-//! MQTT engine for the RushWind broker contract — the Go
-//! `go-wind-plugins/broker/mqtt` ported onto `rumqttc`.
+//! MQTT engine for the RushWind broker, over `rumqttc`.
 //!
 //! # The wire behavior
 //!
-//! Identical to the Go engine's: publishes default to QoS 1 without
+//! Publishes default to QoS 1 without
 //! the retain flag and carry **only the payload** — headers and
-//! metadata have no MQTT 3.1.1 carrier, so the Go engine drops them
-//! and so does this one. Subscriptions default to QoS 1 and follow
+//! metadata have no MQTT 3.1.1 carrier, so they are dropped.
+//! Subscriptions default to QoS 1 and follow
 //! MQTT topic filters (`+` single-level, `#` multi-level); incoming
 //! publishes are routed to every handler whose filter matches.
 //!
@@ -14,19 +13,17 @@
 //!
 //! `connect` spawns the event-loop pump; the loop drives rumqttc's
 //! automatic reconnection and, on every successful CONNACK, re-arms
-//! every live subscription — the Go engine's
-//! `onConnect`/`SetResumeSubs` behavior. Publishing while
-//! disconnected fails with [`BrokerError::NotConnected`], the Go
-//! "not connected" error. A re-`connect` starts a fresh pump
+//! every live subscription, as if resubscribed on connect.
+//! Publishing while
+//! disconnected fails with [`BrokerError::NotConnected`]. A re-`connect` starts a fresh pump
 //! generation; the previous pump exits.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
-//! - Deliveries dispatch concurrently (one task each); the Go paho
-//!   client defaults to ordered, sequential handler invocation.
-//! - Per-call QoS and retain options are not ported — the defaults
-//!   (QoS 1, no retain) are the shapes the Go engine's own tests and
-//!   the framework use.
+//! - Deliveries dispatch concurrently (one task each); handler
+//!   ordering is not guaranteed.
+//! - Per-call QoS and retain options are not exposed — publishes
+//!   use the defaults (QoS 1, no retain).
 //! - Dropping a [`Subscriber`] removes its filter best-effort; the
 //!   explicit [`Subscriber::unsubscribe`] is the reliable path.
 //!
@@ -73,8 +70,7 @@ pub struct MqttBroker {
 pub struct MqttOptions {
     /// The broker address as `host:port`.
     pub addr: String,
-    /// The MQTT client id. Default: a random `rushwind-mqtt-…` id —
-    /// the Go `generateClientId`.
+    /// The MQTT client id. Default: a random `rushwind-mqtt-…` id.
     pub client_id: String,
     /// The username, when the broker demands authentication.
     pub username: Option<String>,
@@ -174,7 +170,7 @@ fn port_of(addr: &str) -> u16 {
         .unwrap_or(1883)
 }
 
-/// A random client id — the Go `generateClientId`.
+/// A random `rushwind-mqtt-…` client id.
 fn random_client_id() -> String {
     let mut bytes = [0u8; 8];
     let _ = getrandom::fill(&mut bytes);
@@ -238,7 +234,7 @@ impl Broker for MqttBroker {
                                 match event {
                                     rumqttc::Event::Incoming(rumqttc::Packet::ConnAck(_)) => {
                                         // Re-arm every live subscription —
-                                        // the Go onConnect behavior.
+                                        // resubscribe on connect.
                                         let filters = shared
                                             .subscriptions
                                             .lock()
@@ -331,7 +327,7 @@ impl Broker for MqttBroker {
             if !*self.shared.connected.lock().await {
                 return Err(BrokerError::NotConnected);
             }
-            // The Go engine publishes body-only at QoS 1 without
+            // Publishes are body-only at QoS 1 without
             // retain; headers and metadata have no MQTT 3.1.1 carrier.
             client
                 .publish(topic, rumqttc::QoS::AtLeastOnce, false, message.payload)

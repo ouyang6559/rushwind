@@ -1,8 +1,7 @@
-//! BSON engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/bson` package ported onto the `bson`
+//! BSON engine for the RushWind encoding contract, over the `bson`
 //! crate.
 //!
-//! One structural divergence from the plain-delegate Go engines: the
+//! Unlike the plain-delegate engines in this workspace: the
 //! `bson` crate exposes no writer-backed `serde::Serializer` for whole
 //! documents, and the erased contract needs one. Marshal therefore
 //! routes the value through `serde_json`'s in-memory value model
@@ -33,7 +32,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `bson.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "bson";
 
 /// The BSON codec. State-free; construct one or fetch it from the
@@ -48,8 +47,7 @@ impl BsonCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the bson codec");
     }

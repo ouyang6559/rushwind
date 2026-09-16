@@ -4,25 +4,24 @@
 //! concrete implementation defines it to be (filesystem path, object
 //! key, script id, ...). Loading is the only mandatory capability —
 //! [`ScriptSource::watch`] is a defaulted capability method that
-//! rejects with [`ScriptError::CapabilityNotSupported`], the runtime
-//! form of the Go `Watcher` interface assertion, and compositions like
+//! rejects with [`ScriptError::CapabilityNotSupported`], and
+//! compositions like
 //! [`MultiSource`] skip sub-sources answering with it.
 //!
-//! The Go predecessor delivers change notifications through a channel
-//! closed by context cancellation; the port follows the config
+//! Change notifications follow the config
 //! domain's stream doctrine — [`SignalStream`] yields one tick per
 //! change, ends (`None`) when the underlying watch ends, and dropping
-//! the stream is the cancellation. The `context.Context` parameter is
-//! dropped throughout: callers needing deadlines wrap the call in
+//! the stream is the cancellation. There is no context parameter:
+//! callers needing deadlines wrap the call in
 //! `tokio::time::timeout`, and dropping a load future cancels the
 //! load.
 //!
 //! Unlike the config domain there is no "absent" answer — a missing
-//! key is an [`ScriptError::Failed`], the Go shape, because script
+//! key is an [`ScriptError::Failed`], because script
 //! sources have no priority-shadowing semantics riding on absence.
 //!
-//! The Go sources over external infrastructure — consul, etcd, redis,
-//! http, s3, git, database — are unported and each is an engine crate
+//! Sources over external infrastructure — consul, etcd, redis,
+//! http, s3, git, database — are each an engine crate
 //! waiting on its client integration, the registry engines'
 //! trajectory.
 
@@ -35,7 +34,7 @@ use std::sync::Arc;
 /// Implementations live in their own crates (`rushwind-script-*`) for
 /// remote carriers; the local carriers (memory, file, static tree) and
 /// the compositions (multi-strategy, cached, transform) live in this
-/// crate, the Go package's own layout. A source is [`Send`] + [`Sync`]
+/// crate. A source is [`Send`] + [`Sync`]
 /// and shareable behind an [`Arc`].
 pub trait ScriptSource: Send + Sync {
     /// Loads the script source code for `key`.

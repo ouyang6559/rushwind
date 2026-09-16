@@ -1,47 +1,42 @@
-//! Message broker contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/broker`: the [`Broker`] interface with
+//! Message broker contract for RushWind: the [`Broker`] interface with
 //! its connect/publish/subscribe/request lifecycle, the [`Message`]
 //! wire shape, the delivery [`Event`], and the [`Subscriber`] handle.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! The Go contract carries the payload as `Body any` plus a codec
-//! (JSON by default) and typed handlers that cast the decoded body.
-//! Rust needs none of that machinery: the message travels as bytes
-//! ([`Message::payload`]) and applications encode and decode at the
-//! edges with serde. [`json_handler`] is the typed-helper equivalent —
-//! it wraps a typed closure into a [`Handler`] that JSON-decodes the
-//! payload first, and [`json_message`] builds a JSON-encoded
-//! [`Message`].
+//! The message travels as bytes ([`Message::payload`]) and
+//! applications encode and decode at the edges with serde — no
+//! dynamically typed body plus codec machinery in between.
+//! [`json_handler`] is the typed-helper equivalent — it wraps a typed
+//! closure into a [`Handler`] that JSON-decodes the payload first,
+//! and [`json_message`] builds a JSON-encoded [`Message`].
 //!
-//! Go's `Event.Ack()` survives as [`Event::ack`]: engines whose
-//! deliveries need acknowledging (Kafka offsets, RabbitMQ acks) wire
-//! the native ack into the event; engines with implicit acknowledgment
-//! (MQTT) leave it a no-op, exactly as the Go mqtt publication does.
-//! Go's `Metadata map[string]any` narrows to string values — the
-//! native broker metadata surfaces are string-typed. Go's `Msg any`
-//! native-handle slot has no equivalent: engines expose what
-//! their delivery actually needs through the event.
+//! [`Event::ack`] acknowledges a delivery: engines whose deliveries
+//! need acknowledging (Kafka offsets, RabbitMQ acks) wire the native
+//! ack into the event; engines with implicit acknowledgment (MQTT)
+//! leave it a no-op. Message metadata narrows to string values — the
+//! native broker metadata surfaces are string-typed. A native-message
+//! handle slot has no equivalent: engines expose what their delivery
+//! actually needs through the event.
 //!
-//! Go's `Broker.Request` survives as [`Broker::request`]: a default
-//! trait method returning the not-implemented error — the shape of
-//! every Go engine without a native request-reply surface — which
-//! engines with one (NATS) override.
+//! [`Broker::request`] carries a default implementation returning the
+//! not-implemented error — the shape every engine without a native
+//! request-reply surface inherits — which engines with one (NATS)
+//! override.
 //!
 //! # Middleware
 //!
-//! Go's `PublishMiddleware`/`SubscriberMiddleware` chains — carried on
-//! the Go broker options — survive as [`MiddlewareBroker`], a decorator
-//! that runs the chains around another broker. The chain semantics are
-//! the Go ones the Go chain tests pin: middlewares apply backward, so
-//! the first-registered middleware is the outermost wrapper and runs
-//! first.
+//! The [`PublishMiddleware`]/[`SubscriberMiddleware`] chains ride on
+//! [`MiddlewareBroker`], a decorator that runs the chains around
+//! another broker. The chain semantics are fixed: middlewares apply
+//! backward, so the first-registered middleware is the outermost
+//! wrapper and runs first.
 //!
 //! # Engines
 //!
 //! Engines live in `rushwind-broker-*` crates (`mqtt`, `nats`, ...)
-//! and implement [`Broker`] over their native client. The Go
-//! per-call publish/subscribe options narrow to what the engine can
+//! and implement [`Broker`] over their native client. Per-call
+//! publish/subscribe options narrow to what the engine can
 //! actually honor; engine-specific knobs live on the engine's
 //! constructor options, not per call.
 
@@ -77,8 +72,7 @@ impl std::fmt::Display for BrokerError {
 
 impl std::error::Error for BrokerError {}
 
-/// The message wire shape — the Go `broker.Message` with the payload
-/// as bytes.
+/// The message wire shape, with the payload as bytes.
 #[derive(Debug, Clone, Default)]
 pub struct Message {
     /// Message id. Engines generate one when the native message
@@ -114,7 +108,7 @@ impl Message {
         self
     }
 
-    /// Reads a header, defaulting to empty — the Go `GetHeader`.
+    /// Reads a header, defaulting to empty.
     pub fn header(&self, key: &str) -> &str {
         self.headers
             .get(key)
@@ -166,18 +160,18 @@ impl Event {
         }
     }
 
-    /// The topic the message arrived on — the Go `Event.Topic`.
+    /// The topic the message arrived on.
     pub fn topic(&self) -> &str {
         &self.topic
     }
 
-    /// The message — the Go `Event.Message`.
+    /// The delivered message.
     pub fn message(&self) -> &Message {
         &self.message
     }
 
     /// Acknowledges the delivery. A no-op for engines with implicit
-    /// acknowledgment — the Go mqtt publication's `Ack`.
+    /// acknowledgment, such as MQTT.
     pub async fn ack(self) -> Result<(), BrokerError> {
         match self.acker {
             Some(acker) => acker().await,
@@ -186,40 +180,40 @@ impl Event {
     }
 }
 
-/// The handler invoked per delivery — the Go `broker.Handler` with
-/// the context parameter dropped (cancellation rides the future).
+/// The handler invoked per delivery; cancellation rides the future
+/// instead of a context parameter.
 pub type Handler = Arc<dyn Fn(Event) -> BoxFuture<'static, Result<(), BrokerError>> + Send + Sync>;
 
-/// The subscription handle — the Go `broker.Subscriber`.
+/// The subscription handle.
 pub trait Subscriber: Send {
-    /// The subscribed topic — the Go `Subscriber.Topic`.
+    /// The subscribed topic.
     fn topic(&self) -> &str;
 
     /// Unsubscribes and releases the engine-side subscription.
     fn unsubscribe(&mut self) -> BoxFuture<'_, Result<(), BrokerError>>;
 }
 
-/// The broker interface — the Go `broker.Broker`. Engines must be
+/// The broker interface. Engines must be
 /// callable through shared references (`&self`).
 pub trait Broker: Send + Sync {
-    /// The engine name — the Go `Broker.Name`.
+    /// The engine name.
     fn name(&self) -> &'static str;
 
-    /// Establishes the broker connection — the Go `Broker.Connect`.
+    /// Establishes the broker connection.
     /// Idempotent engines may treat repeated calls as no-ops.
     fn connect(&self) -> BoxFuture<'_, Result<(), BrokerError>>;
 
-    /// Tears the connection down — the Go `Broker.Disconnect`.
+    /// Tears the connection down.
     fn disconnect(&self) -> BoxFuture<'_, Result<(), BrokerError>>;
 
-    /// Publishes a message to a topic — the Go `Broker.Publish`.
+    /// Publishes a message to a topic.
     fn publish<'a>(
         &'a self,
         topic: &'a str,
         message: Message,
     ) -> BoxFuture<'a, Result<(), BrokerError>>;
 
-    /// Subscribes a handler to a topic — the Go `Broker.Subscribe`.
+    /// Subscribes a handler to a topic.
     /// Topic filters follow the engine's native syntax (MQTT's `+`/`#`
     /// wildcards, NATS's `*`/`>`, Kafka's literal topics).
     fn subscribe<'a>(
@@ -228,10 +222,9 @@ pub trait Broker: Send + Sync {
         handler: Handler,
     ) -> BoxFuture<'a, Result<Box<dyn Subscriber>, BrokerError>>;
 
-    /// Sends a request and awaits a response — the Go
-    /// `Broker.Request`. This default is the Go stub shape: every
-    /// engine without a native request-reply surface returns the
-    /// not-implemented error; engines with one override this.
+    /// Sends a request and awaits a response. The default is a stub:
+    /// every engine without a native request-reply surface returns
+    /// the not-implemented error; engines with one override this.
     fn request<'a>(
         &'a self,
         topic: &'a str,
@@ -246,9 +239,9 @@ pub trait Broker: Send + Sync {
     }
 }
 
-/// The publish-call surface a [`PublishMiddleware`] wraps — the Go
-/// `PublishHandler` reshaped: engine publish futures borrow their
-/// brokers, so the wrapped call is a by-reference trait object
+/// The publish-call surface a [`PublishMiddleware`] wraps. Engine
+/// publish futures borrow their brokers, so the wrapped call is a
+/// by-reference trait object
 /// rather than an `Fn` returning `'static` futures.
 pub trait PublishCall: Send + Sync {
     /// Performs the wrapped publish.
@@ -259,15 +252,14 @@ pub trait PublishCall: Send + Sync {
     ) -> BoxFuture<'a, Result<(), BrokerError>>;
 }
 
-/// Wraps a publish-call surface — the Go `PublishMiddleware`,
-/// polymorphic over the wrapped surface's object lifetime.
+/// Wraps a publish-call surface, polymorphic over the wrapped
+/// surface's object lifetime.
 pub type PublishMiddleware =
     Arc<dyn for<'x> Fn(Arc<dyn PublishCall + 'x>) -> Arc<dyn PublishCall + 'x> + Send + Sync>;
 
-/// Chains publish middlewares around a base surface — the Go
-/// `ChainPublishMiddleware` semantics its test pins: middlewares apply
-/// backward, so the first-registered middleware is the outermost
-/// wrapper and runs first.
+/// Chains publish middlewares around a base surface: middlewares
+/// apply backward, so the first-registered middleware is the
+/// outermost wrapper and runs first.
 fn chain_publish<'a>(
     base: Arc<dyn PublishCall + 'a>,
     middlewares: &[PublishMiddleware],
@@ -295,12 +287,11 @@ impl<B: Broker> PublishCall for BrokerPublishCall<'_, B> {
     }
 }
 
-/// Wraps a subscriber handler — the Go `SubscriberMiddleware`.
+/// Wraps a subscriber handler.
 pub type SubscriberMiddleware = Arc<dyn Fn(Handler) -> Handler + Send + Sync>;
 
-/// Chains subscriber middlewares around a handler — the Go
-/// `ChainSubscriberMiddleware` semantics its test pins:
-/// first-registered runs first.
+/// Chains subscriber middlewares around a handler: first-registered
+/// runs first.
 fn chain_subscriber(base: Handler, middlewares: &[SubscriberMiddleware]) -> Handler {
     let mut handler = base;
     for middleware in middlewares.iter().rev() {
@@ -310,13 +301,13 @@ fn chain_subscriber(base: Handler, middlewares: &[SubscriberMiddleware]) -> Hand
 }
 
 /// A [`Broker`] decorator running publish and subscriber middleware
-/// chains around another broker — the Go options'
-/// `PublishMiddlewares`/`SubscriberMiddlewares`, reshaped from
-/// constructor options into a composable layer: the wrapped broker
+/// chains around another broker — the
+/// `PublishMiddlewares`/`SubscriberMiddlewares` options reshaped into
+/// a composable layer: the wrapped broker
 /// stays untouched, the chains apply only through the decorator, and
 /// every non-publish/non-subscribe call delegates unchanged.
 ///
-/// The chains follow the Go order its chain tests pin: the
+/// The chains follow a fixed order: the
 /// first-registered middleware is the outermost wrapper and runs
 /// first.
 pub struct MiddlewareBroker<B: Broker> {
@@ -386,15 +377,14 @@ impl<B: Broker> Broker for MiddlewareBroker<B> {
         topic: &'a str,
         message: Message,
     ) -> BoxFuture<'a, Result<Message, BrokerError>> {
-        // Go leaves Request unwrapped by the publish chain; the
+        // Request is left unwrapped by the publish chain; the
         // decorator delegates it unchanged.
         let inner = Arc::clone(&self.inner);
         Box::pin(async move { inner.request(topic, message).await })
     }
 }
 
-/// Builds a JSON-encoded [`Message`] from any serializable value —
-/// the encode half of the Go codec default.
+/// Builds a JSON-encoded [`Message`] from any serializable value.
 pub fn json_message<T: Serialize>(value: &T) -> Result<Message, BrokerError> {
     let payload =
         serde_json::to_vec(value).map_err(|e| BrokerError::Failed(format!("json encode: {e}")))?;
@@ -402,8 +392,8 @@ pub fn json_message<T: Serialize>(value: &T) -> Result<Message, BrokerError> {
 }
 
 /// Wraps a typed closure into a [`Handler`] that JSON-decodes each
-/// delivery's payload first — the Go `Subscribe[T]` typed-helper
-/// shape: a decode failure surfaces as a handler error.
+/// delivery's payload first; a decode failure surfaces as a handler
+/// error.
 pub fn json_handler<T, F, Fut>(handler: F) -> Handler
 where
     T: DeserializeOwned + Send + 'static,
@@ -454,8 +444,7 @@ mod tests {
             .expect("handler must succeed");
     }
 
-    /// A decode failure surfaces as a handler error, not a panic —
-    /// the Go typed helper's "unsupported type" error path.
+    /// A decode failure surfaces as a handler error, not a panic.
     #[tokio::test]
     async fn json_decode_failure_is_an_error() {
         #[derive(Debug, serde::Deserialize)]
@@ -476,7 +465,7 @@ mod tests {
         assert!(result.is_err(), "decode failure must surface as an error");
     }
 
-    /// Headers and metadata follow the Go builder semantics.
+    /// Headers and metadata follow last-write-wins builder semantics.
     #[test]
     fn message_builder_semantics() {
         let message = Message::from_payload(vec![])
@@ -491,8 +480,8 @@ mod tests {
         );
     }
 
-    /// The default [`Broker::request`] returns the Go stubs'
-    /// not-implemented error.
+    /// The default [`Broker::request`] returns the not-implemented
+    /// error.
     #[tokio::test]
     async fn default_request_is_not_implemented() {
         let broker = MiddlewareBroker::new(Arc::new(NullBroker), vec![], vec![]);
@@ -505,10 +494,9 @@ mod tests {
 
     /// The middleware chains apply backward — the first-registered
     /// middleware is the outermost wrapper and runs first, wrapping
-    /// the base handler last — the order the Go
-    /// ChainXxxMiddleware tests pin.
+    /// the base handler last.
     #[tokio::test]
-    async fn middleware_chain_order_is_go_shaped() {
+    async fn middleware_chain_order_is_canonical() {
         let publish_log = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
         let subscribe_log = Arc::new(std::sync::Mutex::new(Vec::<&'static str>::new()));
 

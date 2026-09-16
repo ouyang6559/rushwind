@@ -1,5 +1,4 @@
-//! The HTTP edge for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/transport/http/middleware`.
+//! The HTTP edge for RushWind.
 //!
 //! `rushwind-transport-axum` puts a [`Router`](axum::Router) into the
 //! lifecycle; this crate is everything a business router needs *around*
@@ -11,10 +10,10 @@
 //!
 //! # The error envelope
 //!
-//! [`HttpError`] is the port of the Go `errors.WindError`: a gRPC-aligned
+//! [`HttpError`] is the one error envelope: a gRPC-aligned
 //! [`Code`], a stable machine-readable `reason` (the i18n key the frontend
-//! substitutes — the Go predecessor ships no server-side i18n on
-//! purpose), a human `message`, and optional structured `details`. It
+//! substitutes — there is no server-side i18n by design), a human
+//! `message`, and optional structured `details`. It
 //! implements [`IntoResponse`](axum::response::IntoResponse), so handlers
 //! return `Result<T, HttpError>` and every rejection renders the same
 //! JSON shape with the mapped HTTP status:
@@ -31,9 +30,9 @@
 //!
 //! Each middleware is a `with_*` free function wrapping a [`Router`] —
 //! the [`CrudApi`](https://docs.rs/rushwind-storage-axum) assembly style.
-//! The wrapper composes them in the Go admin's order:
+//! The wrapper composes them in the canonical order:
 //!
-//! | order | wrapper | the Go middleware |
+//! | order | wrapper | middleware |
 //! |:---|:---|:---|
 //! | 1 | [`with_recovery`] | `recovery` — panic → `500` envelope, detail only in the log |
 //! | 2 | [`with_request_id`] | `requestid` — echoes or mints `x-request-id`, inserts [`RequestId`] |
@@ -55,7 +54,7 @@
 //! [`set_policies`](rushwind_authz::Engine::set_policies), wrap the
 //! protected subtree, reset policies on change.
 //!
-//! Route whitelists (the Go admin's login/captcha exemptions) are
+//! Route whitelists (public exemptions such as login/captcha) are
 //! assembly, not middleware: layer the public routes separately and
 //! [`merge`](axum::Router::merge) them into the protected subtree.
 //!
@@ -67,7 +66,7 @@
 //!
 //! # Deliberately not here
 //!
-//! The Go family's `ratelimit`/`circuitbreaker` bridges (both contract
+//! The `ratelimit`/`circuitbreaker` bridges (both contract
 //! domains exist; per-route keying is a policy decision the application
 //! owns today), `codec`/`crypto`/`metadata`/`validate` (DTO-level, the
 //! application's shape), and client-side `retry` (see `rushwind-retry`).

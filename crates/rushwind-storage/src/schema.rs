@@ -1,10 +1,8 @@
 //! Table schema descriptions.
 //!
-//! Go's go-crud leans on runtime reflection over generated proto structs to
-//! learn a table's shape. Rust has no runtime reflection, so the contract
-//! makes the schema an explicit first-class value: engines derive their
-//! native machinery from a [`Schema`], and query validation happens against
-//! it before anything reaches the driver.
+//! The contract makes a table's shape an explicit first-class value:
+//! engines derive their native machinery from a [`Schema`], and query
+//! validation happens against it before anything reaches the driver.
 
 use crate::error::StorageError;
 

@@ -1,11 +1,12 @@
-//! The CORS middleware — the Go `cors`, configured like the Go admin's
-//! `server.yaml` block: explicit origin list, credential flag, method
-//! and header lists, max age.
+//! The CORS middleware, configured with an explicit origin list,
+//! credential flag, method
+//! and header lists, and max age.
 //!
 //! A `*` origin delegates to `AllowOrigin::any()`; combined with
-//! credentials it switches to per-request mirroring instead (browsers
+//! credentials it switches to per-request origin echo instead (browsers
 //! reject `Access-Control-Allow-Origin: *` together with
-//! `Access-Control-Allow-Credentials: true`, so mirroring is the only
+//! `Access-Control-Allow-Credentials: true`, so echoing the request
+//! origin is the only
 //! shape that works). An empty origin list allows nothing — CORS stays
 //! off until configured.
 
@@ -25,7 +26,8 @@ pub const DEFAULT_ALLOW_HEADERS: &[&str] = &["content-type", "authorization", HE
 /// The default response-exposed headers when none are configured.
 pub const DEFAULT_EXPOSE_HEADERS: &[&str] = &[HEADER_X_REQUEST_ID];
 
-/// The CORS policy, the Go admin's `server.yaml` CORS block.
+/// The CORS policy: origin list, credential flag, methods, headers,
+/// exposed headers, and max age.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CorsOptions {
     pub(crate) allow_origins: Vec<String>,
@@ -103,7 +105,7 @@ impl CorsOptions {
         let any_origin = self.allow_origins.iter().any(|origin| origin == "*");
         let origin = if any_origin && self.allow_credentials {
             // Credentialed + any-origin is a browser-rejected shape;
-            // mirror the request origin instead.
+            // echo the request origin instead.
             AllowOrigin::predicate(|_, _| true)
         } else if any_origin {
             AllowOrigin::any()

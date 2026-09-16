@@ -1,6 +1,5 @@
 //! Vegas conformance: warmup gating, inflation-driven degrade/heal
-//! hysteresis, half-open recovery, and the outlier filter — the Go
-//! `vegas_test.go` shapes.
+//! hysteresis, half-open recovery, and the outlier filter.
 
 #![cfg(test)]
 

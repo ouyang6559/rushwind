@@ -1,25 +1,22 @@
-//! Configuration-source contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/config`.
+//! Configuration-source contract for RushWind.
 //!
 //! A config source serves **raw bytes by key** — decoding is deliberately
-//! outside the contract: the Go `Decoder` interface exists so callers need
-//! not call `json.Unmarshal` directly, and in Rust serde *is* that
+//! outside the contract: in Rust serde *is* the decoding
 //! standard (`serde_json::from_slice`, `serde_yaml::from_slice`); a trait
 //! re-wrapping it would add a layer with no seam to inject into.
 //!
-//! The contract is one trait with defaulted capability methods, mirroring
-//! the Go interface family:
+//! The contract is one trait with defaulted capability methods:
 //!
-//! - [`Source::load`] — the Go `Reader`: one raw read by key. A missing
+//! - [`Source::load`] — one raw read by key. A missing
 //!   key is `Ok(None)`, **not** an error — the signal a fallback source
 //!   keyss off of.
-//! - [`Source::watch`] — the Go `Watcher`: signal-mode change
+//! - [`Source::watch`] — signal-mode change
 //!   notifications ([`SignalStream`], a tick per change, value re-read by
 //!   the caller). No engine implements it yet.
-//! - [`Source::watch_value`] — the Go `ValueWatcher`: push-mode change
+//! - [`Source::watch_value`] — push-mode change
 //!   notifications ([`ValueStream`], the new raw value per change).
 //!
-//! Go discovers capabilities with runtime interface assertions; here the
+//! Capabilities are discovered through the defaulted methods: the
 //! defaults reject with [`ConfigError::NotWatchable`], the explicit
 //! marker [`FallbackSource`] keys off to discover watchable sub-sources.
 //!
@@ -31,26 +28,30 @@
 //! lower-priority source's notification still surfaces the
 //! higher-priority answer.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `Reader` / `Watcher` / `ValueWatcher` / `ReadCloser` interfaces | one [`Source`] trait; capability methods default to [`ConfigError::NotWatchable`] (the runtime form of an interface check; trait upcasting would be the other route and is past the workspace MSRV) |
-//! | `Closer` / `Close()` | `Drop` |
-//! | `Decoder` | serde — decoding is the caller's `from_slice` |
-//! | `Watch(ctx, …)` / `WatchValue(ctx, …)` channels closed by context cancellation | streams end when all underlying watches end; dropping the stream object is the cancellation |
-//! | `FallbackReader.WatchValue` spawns a goroutine per sub-source | [`FallbackSource`] races the sub-streams inside its own `next()` — no task boundaries, the orchestrator's boxed-future doctrine |
+//! - One [`Source`] trait instead of separate reader/watcher interfaces;
+//!   capability methods default to [`ConfigError::NotWatchable`] (an
+//!   explicit capability check; trait upcasting would be the other route
+//!   and is past the workspace MSRV).
+//! - `Drop` replaces explicit close calls.
+//! - serde replaces a decoder interface — decoding is the caller's
+//!   `from_slice`.
+//! - Watch streams end when all underlying watches end; dropping the
+//!   stream object is the cancellation.
+//! - [`FallbackSource`] races the sub-streams inside its own `next()` —
+//!   no task boundaries, the orchestrator's boxed-future doctrine.
 //!
-//! # Engine matrix (ported)
+//! # Engine matrix
 //!
 //! | Crate | Carrier |
 //! |:---|:---|
 //! | `rushwind-config-env` | environment variables, optional prefix |
 //! | `rushwind-config-file` | one file, directory-watched for changes |
 //!
-//! The Go sources over external infrastructure — etcd, consul, nacos,
+//! Sources over external infrastructure — etcd, consul, nacos,
 //! zookeeper, redis, vault, http, oss, kubernetes, apollo, polaris, and
-//! the `embed.FS` source — remain unported; each needs its network or
+//! embedded filesystems — are future work; each needs its network or
 //! embedding contract decided first, the registry engines' trajectory.
 
 #![forbid(unsafe_code)]
@@ -81,7 +82,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub trait Source: Send + Sync {
     /// Reads the raw configuration bytes for the key.
     ///
-    /// A missing key is `Ok(None)` — the Go `(nil, nil)` shape that
+    /// A missing key is `Ok(None)` — the signal that
     /// tells a fallback source to keep walking. A source that *cannot*
     /// answer (I/O failure, backend down) returns `Err` instead; the
     /// distinction is the whole point of the fallback composition.

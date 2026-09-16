@@ -1,43 +1,40 @@
-//! Pulsar engine for the RushWind broker contract — the Go
-//! `go-wind-plugins/broker/pulsar` ported onto `pulsar` (pulsar-rs).
+//! Pulsar engine for the RushWind broker, over `pulsar` (pulsar-rs).
 //!
 //! # The wire behavior
 //!
 //! Publishes go through the crate's multi-topic producer, which
-//! creates and caches one producer per topic — the Go engine's
-//! producer map, with the caching inside the client library. The
+//! creates and caches one producer per topic, with the caching
+//! inside the client library. The
 //! payload rides raw (the crate's byte passthrough), the message
 //! headers map to the record's user properties, and a nonempty
 //! contract key becomes the partition key. The send awaits the
-//! broker's receipt, as the Go engine's `Send` does.
+//! broker's receipt.
 //!
-//! Subscribes build a `Shared`-type consumer under the Go engine's
-//! fixed subscription name. Deliveries surface as events on their
+//! Subscribes build a `Shared`-type consumer under a fixed
+//! subscription name. Deliveries surface as events on their
 //! origin topic with the payload (raw), the user properties as
 //! headers, and the partition key lossily decoded into the
 //! contract's string key. Each delivery is acknowledged
-//! immediately after its handler is spawned — the Go engine's
-//! `AutoAck` default acked after the handler returned — so this is
+//! immediately after its handler is spawned rather than after the
+//! handler returns, so this is
 //! an implicit-acknowledgment engine and [`Event::ack`] is a no-op.
 //!
 //! The consumer ends on `unsubscribe` or on the stream's own end —
-//! a closed consumer or an error — without a retry loop, the Go
-//! engine's shape (its channel loop ended the same way).
+//! a closed consumer or an error — without a retry loop.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
 //! - Unsubscribe closes the consumer but sends no
 //!   unsubscribe-request: the server-side subscription and its
-//!   backlog survive until the broker's retention reaps them. The
-//!   Go engine called the client's `Unsubscribe`, which deletes the
-//!   subscription; pulsar-rs exposes no equivalent.
-//! - The Go engine's producer-rotation retry on a cached producer's
-//!   failure is not ported: a failed send surfaces as an error and
-//!   the producer stays cached (the library owns the cache).
+//!   backlog survive until the broker's retention reaps them
+//!   (pulsar-rs exposes no unsubscribe call).
+//! - Producer rotation and retry on a cached producer's
+//!   failure are out of scope: a failed send surfaces as an error
+//!   and the producer stays cached (the library owns the cache).
 //! - Batch knobs, send timeouts, TLS and auth dialer knobs,
-//!   dead-letter policies, and tracers are not ported: the
+//!   dead-letter policies, and tracers are not exposed: the
 //!   constructor takes the address only. An empty address falls
-//!   back to `pulsar://127.0.0.1:6650`, the Go engine's default.
+//!   back to the `pulsar://127.0.0.1:6650` default.
 //!
 //! # Testing
 //!
@@ -56,8 +53,7 @@ use rushwind_broker::{BoxFuture, Broker, BrokerError, Event, Handler, Message, S
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-/// The subscription name every consumer registers with — the Go
-/// engine's fixed default.
+/// The fixed subscription name every consumer registers with.
 const SUBSCRIPTION_NAME: &str = "my-subscription";
 
 /// Wraps a pulsar-rs error as a broker failure.
@@ -81,14 +77,14 @@ pub struct PulsarBroker {
 #[derive(serde::Deserialize)]
 pub struct PulsarSettings {
     /// The Pulsar service URL (`pulsar://host:port`). Absent falls
-    /// back to the Go engine's default localhost service.
+    /// back to the default localhost service.
     pub addr: Option<String>,
 }
 
 impl PulsarBroker {
     /// Connects to the Pulsar service at `addr` (e.g.
     /// `pulsar://127.0.0.1:6650`). An empty address falls back to
-    /// the Go engine's default.
+    /// the default localhost service.
     pub async fn connect(addr: &str) -> Result<Self, BrokerError> {
         let addr = if addr.is_empty() {
             "pulsar://127.0.0.1:6650"
@@ -111,7 +107,7 @@ impl PulsarBroker {
     }
 
     /// Constructs from the bootstrap factory's settings wire shape:
-    /// `addr` (optional; empty falls back to the Go engine's default
+    /// `addr` (optional; empty falls back to the default
     /// localhost service).
     pub async fn from_settings(settings: serde_json::Value) -> Result<Self, BrokerError> {
         let settings: PulsarSettings = serde_json::from_value(settings)
@@ -173,8 +169,7 @@ impl Broker for PulsarBroker {
                 return Err(BrokerError::NotConnected);
             };
             // The record carries the payload raw, the headers as user
-            // properties, and a nonempty key as the partition key —
-            // the Go engine's mapping.
+            // properties, and a nonempty key as the partition key.
             let record = pulsar::producer::Message {
                 payload: message.payload,
                 properties: message.headers,
@@ -234,15 +229,14 @@ impl Broker for PulsarBroker {
                         Ok(Some(record)) => {
                             let event = to_event(&record);
                             tokio::spawn(handler(event));
-                            // The Go engine's AutoAck default:
+                            // Auto-ack semantics:
                             // every delivery is acknowledged once
                             // dispatched.
                             let _ = consumer.ack(&record).await;
                         }
                         Ok(None) | Err(_) => {
                             // The stream ended: closed consumer or an
-                            // error. The pump ends with it, as the Go
-                            // channel loop did.
+                            // error. The pump ends with it.
                             let _ = consumer.close().await;
                             return;
                         }

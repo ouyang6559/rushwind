@@ -1,5 +1,4 @@
-//! Health-check contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/health`: liveness and readiness
+//! Health-check contract for RushWind: liveness and readiness
 //! probes for Kubernetes, load balancers, and orchestration
 //! platforms.
 //!
@@ -15,7 +14,7 @@
 //!   concurrently under a per-check timeout and produces a combined
 //!   [`Result`] with per-check breakdowns.
 //!
-//! The aggregation rules match the Go adapter: any `down` checker
+//! The aggregation rules: any `down` checker
 //! makes the aggregate `down`; otherwise any `unknown` makes it
 //! `unknown`; otherwise the aggregate is `up`. Each checker runs
 //! concurrently and is bounded by the configured timeout — a timed-out
@@ -53,11 +52,11 @@ use axum::Json;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-/// The health state of a component — the Go `Status`.
+/// The health state of a component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Status {
-    /// Not yet checked, or the outcome is inconclusive — the Go
-    /// zero value.
+    /// Not yet checked, or the outcome is inconclusive (the
+    /// default).
     #[default]
     Unknown,
     /// The component runs.
@@ -67,7 +66,7 @@ pub enum Status {
 }
 
 impl Status {
-    /// The readable string — the Go `Status.String`.
+    /// The readable string form.
     pub fn as_str(&self) -> &'static str {
         match self {
             Status::Up => "up",
@@ -77,8 +76,8 @@ impl Status {
     }
 }
 
-/// One check's details, serialized into the aggregate — the Go
-/// per-check `map[string]any` breakdown entry.
+/// One check's details, serialized into the aggregate — one
+/// per-check breakdown entry.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct CheckDetail {
     /// The readable status string.
@@ -88,7 +87,7 @@ pub struct CheckDetail {
     pub message: String,
 }
 
-/// The outcome of a single check — the Go `Result`. The aggregate
+/// The outcome of a single check. The aggregate
 /// carries one [`CheckDetail`] per checker under
 /// [`AggregateResult::checks`].
 #[derive(Debug, Clone)]
@@ -132,7 +131,7 @@ impl Result {
 }
 
 /// The checker — an async health check returning a [`Result`].
-/// Cancellation rides the future (the Go ctx parameter).
+/// Cancellation rides the future.
 pub type Checker = Arc<dyn Fn() -> BoxFuture<'static, Result> + Send + Sync>;
 
 /// Future type used by checkers.
@@ -144,7 +143,7 @@ pub type StdResult<T, E> = std::result::Result<T, E>;
 
 use std::pin::Pin;
 
-/// The aggregator — the Go `Health`: named checkers registered at
+/// The aggregator: named checkers registered at
 /// startup, every check run concurrently under one timeout.
 pub struct Health {
     checkers: RwLock<Vec<(String, Checker)>>,
@@ -206,8 +205,8 @@ impl Health {
         }
     }
 
-    /// Registers a closure-shaped checker — the Go `PingFunc`
-    /// adapter: `Ok(())` is up, `Err(message)` is down.
+    /// Registers a closure-shaped checker: `Ok(())` is up,
+    /// `Err(message)` is down.
     pub async fn register_ping<F, Fut>(&self, name: impl Into<String>, checker: F)
     where
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -237,7 +236,7 @@ impl Health {
             .retain(|(existing, _)| existing != name);
     }
 
-    /// The registered checker names — the Go `Names`.
+    /// The registered checker names.
     pub async fn names(&self) -> Vec<String> {
         self.checkers
             .read()
@@ -247,9 +246,9 @@ impl Health {
             .collect()
     }
 
-    /// Runs every registered checker concurrently and aggregates —
-    /// the Go `Check`. With no checkers registered the aggregate is
-    /// `up` with the Go's "no checkers registered" message.
+    /// Runs every registered checker concurrently and aggregates the
+    /// outcomes. With no checkers registered the aggregate is
+    /// `up` with a "no checkers registered" message.
     pub async fn check(&self) -> AggregateResult {
         let snapshot = self.checkers.read().await.clone();
         if snapshot.is_empty() {
@@ -299,7 +298,7 @@ impl Health {
     }
 }
 
-/// The aggregated outcome — the Go `Check` result with one
+/// The aggregated outcome — one
 /// [`CheckDetail`] per checker.
 #[derive(Debug, Clone, Serialize)]
 pub struct AggregateResult {
@@ -312,8 +311,7 @@ pub struct AggregateResult {
     pub checks: BTreeMap<String, CheckDetail>,
 }
 
-/// Adapts any fallible async closure into a [`Checker`] — the Go
-/// `PingFunc`.
+/// Adapts any fallible async closure into a [`Checker`].
 pub fn ping<F, Fut>(checker: F) -> Checker
 where
     F: Fn() -> Fut + Send + Sync + 'static,
@@ -331,7 +329,7 @@ where
     })
 }
 
-/// A TCP dial checker — the Go `TCP`: the target is up when the
+/// A TCP dial checker: the target is up when the
 /// connection establishes. `timeout` defaults to 3 s when `None`.
 pub fn tcp(addr: impl Into<String>, timeout: Option<Duration>) -> Checker {
     let addr = addr.into();
@@ -348,7 +346,7 @@ pub fn tcp(addr: impl Into<String>, timeout: Option<Duration>) -> Checker {
     })
 }
 
-/// An HTTP GET availability checker — the Go `HTTP`: 2xx–3xx is up,
+/// An HTTP GET availability checker: 2xx–3xx is up,
 /// anything else (or any error) is down. `timeout` defaults to 3 s
 /// when `None`.
 pub fn http(url: impl Into<String>, timeout: Option<Duration>) -> Checker {
@@ -377,7 +375,7 @@ pub fn http(url: impl Into<String>, timeout: Option<Duration>) -> Checker {
 }
 
 /// Composes checkers requiring every child to pass, short-circuiting
-/// on the first failure — the Go `AllCheckers`.
+/// on the first failure.
 pub fn all(checkers: Vec<Checker>) -> Checker {
     Arc::new(move || {
         let checkers = checkers.clone();
@@ -393,8 +391,8 @@ pub fn all(checkers: Vec<Checker>) -> Checker {
     })
 }
 
-/// Composes checkers passing when any child passes — the Go
-/// `AnyCheckers`. Reports the last failure's message when all fail.
+/// Composes checkers passing when any child passes. Reports the last
+/// failure's message when all fail.
 pub fn any(checkers: Vec<Checker>) -> Checker {
     Arc::new(move || {
         let checkers = checkers.clone();
@@ -412,7 +410,7 @@ pub fn any(checkers: Vec<Checker>) -> Checker {
     })
 }
 
-/// The readiness HTTP handler — the Go `NewHandler`. Runs the
+/// The readiness HTTP handler. Runs the
 /// aggregate; 200 when up or unknown, 503 when down. The JSON body
 /// carries the per-check breakdown.
 pub async fn readiness_handler(
@@ -442,7 +440,7 @@ pub async fn readiness_handler(
     )
 }
 
-/// The liveness HTTP handler — the Go `NewLivenessHandler`: a
+/// The liveness HTTP handler: a
 /// constant 200 with `{"status":"up"}`; if the process serves HTTP,
 /// it is alive.
 pub async fn liveness_handler() -> (axum::http::StatusCode, Json<HandlerResponse>) {
@@ -456,7 +454,7 @@ pub async fn liveness_handler() -> (axum::http::StatusCode, Json<HandlerResponse
     )
 }
 
-/// The HTTP endpoint's JSON response — the Go `handlerResponse`.
+/// The HTTP endpoint's JSON response.
 #[derive(Debug, Serialize)]
 pub struct HandlerResponse {
     /// The readable aggregate status.

@@ -1,8 +1,7 @@
-//! JSON engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/json` package ported onto `serde_json`.
+//! JSON engine for the RushWind encoding contract, over `serde_json`.
 //!
-//! Identical to the Go engine's role: the default wire format of the
-//! ecosystem, a direct delegate to the underlying serializer. UTF-8
+//! The workspace's default wire format — a direct delegate to the
+//! underlying serializer. UTF-8
 //! text out, UTF-8 text expected in.
 //!
 //! # Usage
@@ -27,7 +26,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `json.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "json";
 
 /// The JSON codec. State-free; construct one or fetch it from the
@@ -42,8 +41,7 @@ impl JsonCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the json codec");
     }

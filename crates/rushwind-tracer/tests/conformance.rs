@@ -1,6 +1,6 @@
 //! Tracer conformance: provider construction with each transport, the
 //! sample-ratio clamp, the tracer-name default, and carrier
-//! extract/inject — the Go `tracer_test.go` shapes.
+//! extract/inject.
 
 #![cfg(test)]
 
@@ -33,7 +33,7 @@ async fn provider_builds_for_both_transports() {
     assert!(http.is_ok(), "http provider must build");
 }
 
-/// The tracer name defaults to the Go adapter's and can be
+/// The tracer name defaults to the crate default and can be
 /// overridden.
 #[test]
 fn tracer_name_default_and_override() {

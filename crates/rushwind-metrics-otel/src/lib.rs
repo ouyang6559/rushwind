@@ -1,29 +1,35 @@
-//! OpenTelemetry engine for the Rust metrics contract, ported from
-//! `go-wind-plugins/metrics/otel` over the `opentelemetry` Rust SDK.
+//! OpenTelemetry engine for the Rust metrics contract, over the `opentelemetry` Rust SDK.
 //!
 //! Instruments live in an OTel [`SdkMeterProvider`] whose periodic
 //! reader exports via **OTLP** — gRPC (tonic) by default, HTTP binary
 //! protobuf via [`OtelOptions::with_http`] — to any compatible
 //! collector: Prometheus through its OTLP receiver, the Datadog Agent,
 //! Grafana Cloud, and friends. Instruments are created lazily on first
-//! use and cached per name, the Go provider's tables.
+//! use and cached per name.
 //!
-//! The gauge maps to an `f64_up_down_counter`, the Go engine's
+//! The gauge maps to an `f64_up_down_counter`, a
 //! pseudo-gauge: OTel gauges are callback-based, and an up-down counter
 //! gives set-like behavior per label set. Callers needing true gauge
-//! semantics use the raw OTel API directly — the same advice the Go
-//! engine gives.
+//! semantics use the raw OTel API directly.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `otel.SetMeterProvider` installs the provider **globally** | the provider stays engine-local and reachable via [`OtelMetrics::provider`]; installing it process-globally is the application's call — a library hijacking global state would undermine the drop shutdown |
-//! | `WithInsecure` toggles transport TLS | the Rust exporter derives security from the endpoint scheme (`http://` plaintext, `https://` TLS); no separate flag |
-//! | `Close()` with a 10-second deadline flushes and shuts down | [`OtelMetrics::shutdown`] is the explicit form; `Drop` shuts down as a best effort (a drop cannot await) |
-//! | meter name free-form | the OTel API takes a `&'static str`; the service name is leaked once per provider to serve as the metric name |
-//! | gRPC exporter constructs anywhere (goroutines) | the tonic channel spawns its connect task at build time, so [`OtelMetrics::new`] **must run inside a Tokio runtime context** when the gRPC exporter is selected; the HTTP exporter has no such constraint |
-//! | metric names free-form | the OTel instrument API takes `Cow<'static, str>`; each distinct metric name is leaked once, at instrument creation |
+//! - the provider stays engine-local and reachable via
+//!   [`OtelMetrics::provider`]; installing it process-globally is the
+//!   application's call — a library hijacking global state would
+//!   undermine the drop shutdown
+//! - the exporter derives security from the endpoint scheme (`http://`
+//!   plaintext, `https://` TLS); no separate flag
+//! - [`OtelMetrics::shutdown`] is the explicit flush-and-shut-down form;
+//!   `Drop` shuts down as a best effort (a drop cannot await)
+//! - the OTel API takes a `&'static str` meter name; the service name is
+//!   leaked once per provider to serve as the metric name
+//! - the tonic channel spawns its connect task at build time, so
+//!   [`OtelMetrics::new`] **must run inside a Tokio runtime context**
+//!   when the gRPC exporter is selected; the HTTP exporter has no such
+//!   constraint
+//! - the OTel instrument API takes `Cow<'static, str>` metric names;
+//!   each distinct metric name is leaked once, at instrument creation
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -39,13 +45,13 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::resource::Resource;
 use rushwind_metrics::{canonical_labels, Metrics};
 
-/// The default OTLP collector endpoint, the Go default.
+/// The default OTLP collector endpoint.
 pub const DEFAULT_ENDPOINT: &str = "localhost:4317";
 
-/// The default service name, the Go default.
+/// The default service name.
 pub const DEFAULT_SERVICE_NAME: &str = "rushwind-service";
 
-/// The default export interval, the Go default.
+/// The default export interval.
 pub const DEFAULT_EXPORT_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Builder for [`OtelMetrics`].
@@ -58,7 +64,7 @@ pub struct OtelOptions {
 }
 
 impl Default for OtelOptions {
-    /// The Go defaults: gRPC against the loopback collector, one-minute
+    /// The defaults: gRPC against the loopback collector, one-minute
     /// export interval.
     fn default() -> Self {
         Self {
@@ -110,7 +116,7 @@ impl OtelOptions {
     }
 }
 
-/// The per-kind instrument caches, the Go provider's tables. OTel
+/// The per-kind instrument caches. OTel
 /// instruments carry no per-instance label schema — attributes are
 /// per-call — so one instrument per name suffices.
 struct Tables {
@@ -186,14 +192,14 @@ impl OtelMetrics {
         &self.provider
     }
 
-    /// Flushes pending metrics and shuts the exporter down, the Go
-    /// `Close`. Recording after shutdown is dropped, the no-op-provider
+    /// Flushes pending metrics and shuts the exporter down. Recording
+    /// after shutdown is dropped, the no-op-provider
     /// behavior.
     pub fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
         self.provider.shutdown()
     }
 
-    /// The Go toAttrs: labels become OTel attributes, in canonical
+    /// Labels become OTel attributes, in canonical
     /// order.
     fn attributes(labels: &[(&str, &str)]) -> Vec<KeyValue> {
         canonical_labels(labels)
@@ -254,7 +260,7 @@ impl Metrics for OtelMetrics {
             return;
         };
         if let Some(gauge) = self.cached(&mut tables.gauges, name, |meter| {
-            // The Go pseudo-gauge: an up-down counter standing in for
+            // The pseudo-gauge: an up-down counter standing in for
             // OTel's callback-based gauge.
             let instrument_name: &'static str = Box::leak(name.to_string().into_boxed_str());
             Some(meter.f64_up_down_counter(instrument_name).build())
@@ -311,8 +317,8 @@ mod tests {
         let provider = provider();
         provider.gauge("g", 1.0, &[]);
         // The final flush attempts an export; against an unreachable
-        // collector it times out and errors — the Go Close with a
-        // deadline behaves the same. What matters is that shutdown
+        // collector it times out and errors. What matters is that
+        // shutdown
         // returns on its own instead of hanging.
         let _ = provider.shutdown();
     }

@@ -1,19 +1,19 @@
 //! The claim bag and its typed accessors.
 //!
-//! [`AuthClaims`] is the Go `map[string]interface{}` claim bag: an untyped
-//! JSON object carried by a credential, with typed getters layered on top.
-//! The getters reproduce the Go `claims.go` semantics exactly — including
-//! the permissive parts:
+//! [`AuthClaims`] is an untyped JSON object carried by a credential, with
+//! typed getters layered on top. The getters share one uniform parsing
+//! contract — including its permissive parts:
 //!
 //! - a missing key yields the type's zero value, never an error;
 //! - `null` yields a zero value for the numeric getters but
-//!   [`AuthnError::InvalidType`] for the string getters (the Go behavior:
-//!   `parseNumber` special-cases a nil interface, `parseString` does not);
+//!   [`AuthnError::InvalidType`] for the string getters (a null short-
+//!   circuits the numeric getters to zero but is an invalid type for the
+//!   string getters);
 //! - numeric getters convert through the JSON number representation with
-//!   Rust's `as` casts, wrapping the same way Go's unchecked conversions
-//!   do (up to Rust's saturating float-to-int casts).
+//!   unchecked-cast wrapping semantics (Rust's float-to-int casts
+//!   saturate).
 //!
-//! The date getters flatten Go's `*jwtV5.NumericDate` to raw Unix seconds.
+//! The date getters flatten numeric dates to raw Unix seconds.
 
 use serde_json::Value;
 
@@ -39,9 +39,8 @@ pub const CLAIM_FIELD_SCOPE: &str = "scope";
 
 /// A bag of claims attached to a credential.
 ///
-/// The Go predecessor types this as `map[string]interface{}`; the JSON
-/// object is the faithful carrier. The field is public for direct
-/// construction, matching the Go map literal.
+/// The claim bag is a plain JSON object — the natural carrier for untyped
+/// claims. The field is public for direct construction.
 #[derive(Debug, Clone, Default)]
 pub struct AuthClaims(pub serde_json::Map<String, Value>);
 
@@ -56,8 +55,8 @@ impl AuthClaims {
         self.parse_string(CLAIM_FIELD_JWT_ID)
     }
 
-    /// The `exp` claim as Unix seconds; `None` when absent or zero (the Go
-    /// nil-`NumericDate` cases).
+    /// The `exp` claim as Unix seconds; `None` when absent or zero (an
+    /// absent or zero date carries no timestamp).
     pub fn get_expiration_time(&self) -> Result<Option<i64>, AuthnError> {
         self.parse_numeric_date(CLAIM_FIELD_EXPIRATION_TIME)
     }
@@ -109,7 +108,7 @@ impl AuthClaims {
         self.parse_claim_strings(key)
     }
 
-    /// The Go `parseString`: missing key or string → value; `null` or any
+    /// String parsing: missing key or string → value; `null` or any
     /// other JSON type → [`AuthnError::InvalidType`].
     fn parse_string(&self, key: &str) -> Result<String, AuthnError> {
         match self.0.get(key) {
@@ -119,7 +118,7 @@ impl AuthClaims {
         }
     }
 
-    /// The Go `parseClaimsString`: missing key → empty list; string →
+    /// Claim-list parsing: missing key → empty list; string →
     /// one-element list; array of strings → list; array containing a
     /// non-string → [`AuthnError::InvalidType`]; any other JSON type →
     /// empty list.
@@ -137,10 +136,10 @@ impl AuthClaims {
         }
     }
 
-    /// The Go `parseNumericDate`: missing key → `None`; a JSON number →
-    /// its integer part (`math.Modf`'s whole component) unless zero, which
-    /// yields `None`; every other JSON type falls out of the Go type
-    /// switch into [`AuthnError::InvalidType`].
+    /// Numeric date parsing: missing key → `None`; a JSON number →
+    /// its integer part (truncated toward zero) unless zero, which
+    /// yields `None`; every other JSON type falls into
+    /// [`AuthnError::InvalidType`].
     fn parse_numeric_date(&self, key: &str) -> Result<Option<i64>, AuthnError> {
         match self.0.get(key) {
             None => Ok(None),
@@ -158,8 +157,8 @@ impl AuthClaims {
         }
     }
 
-    /// The Go `parseNumber` numeric carrier: `None` for a missing key or a
-    /// JSON `null` (the nil-interface special case), the number for a JSON
+    /// Numeric parsing: `None` for a missing key or a
+    /// JSON `null`, the number for a JSON
     /// number, [`AuthnError::InvalidType`] for every other JSON type.
     fn raw_number(&self, key: &str) -> Result<Option<&serde_json::Number>, AuthnError> {
         match self.0.get(key) {
@@ -172,7 +171,7 @@ impl AuthClaims {
 
 macro_rules! numeric_getter {
     ($name:ident, $ty:ty) => {
-        /// The Go `parseNumber` conversion under an arbitrary key: missing
+        /// Numeric conversion under an arbitrary key: missing
         /// key or `null` → zero, JSON number → cast to the getter's type,
         /// any other JSON type → [`AuthnError::InvalidType`].
         pub fn $name(&self, key: &str) -> Result<$ty, AuthnError> {
@@ -225,7 +224,7 @@ mod tests {
     fn string_getter_returns_value_missing_and_wraps() {
         let c = claims("k", json!("value"));
         assert_eq!(c.get_string("k").unwrap(), "value");
-        // Missing key: Go returns ("", nil).
+        // Missing key: empty string, no error.
         assert_eq!(c.get_string("absent").unwrap(), "");
         assert_eq!(c.get_subject().unwrap(), "");
     }
@@ -236,7 +235,7 @@ mod tests {
             claims("k", json!(1)).get_string("k").unwrap_err(),
             AuthnError::InvalidType
         );
-        // Go's parseString does not share parseNumber's nil special case.
+        // Unlike the numeric getters, the string getter rejects null.
         assert_eq!(
             claims("k", Value::Null).get_string("k").unwrap_err(),
             AuthnError::InvalidType
@@ -273,7 +272,7 @@ mod tests {
     fn claim_strings_tolerate_missing_and_non_arrays() {
         let c = claims("k", json!("x"));
         assert!(c.get_claim_strings("absent").unwrap().is_empty());
-        // A JSON number matches no Go type switch arm: nil, nil.
+        // A JSON number is neither string nor string array: empty list, no error.
         assert!(claims("k", json!(1))
             .get_claim_strings("k")
             .unwrap()
@@ -294,7 +293,7 @@ mod tests {
     fn numeric_getter_zeroes_missing_and_null() {
         let c = claims("k", json!(9));
         assert_eq!(c.get_int("absent").unwrap(), 0);
-        // Go parseNumber's nil special case: JSON null → (0, nil).
+        // JSON null → zero, no error.
         assert_eq!(claims("k", Value::Null).get_int("k").unwrap(), 0);
         assert_eq!(claims("k", Value::Null).get_float64("k").unwrap(), 0.0);
     }

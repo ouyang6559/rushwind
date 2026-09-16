@@ -1,5 +1,4 @@
-//! API-key engine for the RushWind authentication contract, ported from
-//! `go-wind-plugins/security/authn/apikey`.
+//! API-key engine for the RushWind authentication contract.
 //!
 //! Keys ride as bearer tokens:
 //!
@@ -18,7 +17,7 @@
 //!    claims.
 //!
 //! Minting ([`create_identity`](ApiKeyAuthenticator::create_identity))
-//! echoes the `sub` claim back as the key — the Go behavior, including
+//! echoes the `sub` claim back as the key, including
 //! the empty-string mint for a missing claim.
 //!
 //! Keys are opaque strings with no internal structure; nothing
@@ -98,7 +97,7 @@ impl Authenticator for ApiKeyAuthenticator {
     }
 
     fn authenticate_token(&self, token: &str) -> Result<AuthClaims, AuthnError> {
-        // The validator takes precedence, the Go order.
+        // The validator takes precedence.
         if let Some(validator) = &self.options.validator {
             return match validator(token) {
                 Some(claims) => Ok(claims),
@@ -106,8 +105,7 @@ impl Authenticator for ApiKeyAuthenticator {
             };
         }
 
-        // The static key set. No set configured → reject, the Go
-        // nil-map behavior.
+        // The static key set. No set configured → reject.
         let Some(keys) = &self.options.keys else {
             return Err(AuthnError::Unauthenticated);
         };
@@ -121,7 +119,7 @@ impl Authenticator for ApiKeyAuthenticator {
     }
 
     fn create_identity(&self, claims: &AuthClaims) -> Result<String, AuthnError> {
-        // The Go mint: the subject claim echoed as the key, empty when
+        // Minting: the subject claim echoed as the key, empty when
         // absent, never an error.
         let subject = claims.get_subject().unwrap_or_default();
         Ok(subject)
@@ -153,7 +151,7 @@ mod tests {
     fn static_keys_authenticate_with_empty_claims() {
         let auth = ApiKeyAuthenticator::new(ApiKeyOptions::new().with_keys(&["key-1", "key-2"]));
         let claims = auth.authenticate_token("key-1").unwrap();
-        // No claims attached: the Go engine returns an empty bag.
+        // No claims attached: an empty bag.
         assert_eq!(claims.get_subject().unwrap(), "");
     }
 
@@ -221,7 +219,7 @@ mod tests {
     fn authenticate_collapses_missing_credentials() {
         let auth = ApiKeyAuthenticator::new(ApiKeyOptions::new().with_keys(&["key-1"]));
         // No Authorization header, and a wrong-scheme header: both
-        // collapse to the Go engine's single missing-credential error.
+        // collapse to the single missing-credential error.
         assert_eq!(
             auth.authenticate(&[]).unwrap_err(),
             AuthnError::MissingBearerToken
@@ -250,7 +248,7 @@ mod tests {
             auth.create_identity(&subject_claims("key-1")).unwrap(),
             "key-1"
         );
-        // No subject claim: the Go mint returns the empty string, not an
+        // No subject claim: minting returns the empty string, not an
         // error.
         assert_eq!(auth.create_identity(&AuthClaims::new()).unwrap(), "");
     }

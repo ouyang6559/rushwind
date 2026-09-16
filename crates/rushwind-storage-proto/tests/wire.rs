@@ -39,7 +39,7 @@ use rushwind_storage::Page;
 async fn full_request_document_drives_the_engine() {
     let repo = repo().await;
     // protojson: lowerCamelCase, enum member names, FieldMask as a comma
-    // string — exactly what a Go client emits.
+    // string — the standard protojson encoding.
     let request = r#"{
         "paginationType": {"pageBased": {"page": 1, "pageSize": 10}},
         "filterExpr": {"type": "AND", "conditions": [
@@ -154,7 +154,7 @@ fn unsupported_taxonomy_is_named_at_the_boundary() {
             "op {op} must be a named Unsupported, got: {err}"
         );
     }
-    // go-crud's date_part/json_path extensions likewise.
+    // The date_part/json_path extensions likewise.
     let err = filter_expr_from_json(
         r#"{"conditions": [{"field": "created_at", "op": "GTE", "value": 1, "datePart": "DAY"}]}"#,
     )

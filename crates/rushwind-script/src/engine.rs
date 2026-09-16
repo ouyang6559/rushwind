@@ -2,17 +2,17 @@
 //! capability traits, and the `FullEngine` aggregate that full-featured
 //! engines satisfy.
 //!
-//! The Go predecessor splits the same surface across `ScriptEngine`
-//! (lifecycle, mandatory), the optional capability interfaces
-//! (`ScriptLoader`, `ScriptExecutor`, `GlobalAccessor`,
-//! `FunctionRegistrar`, `ModuleRegistrar`, `ScriptWatcher`,
-//! `SandboxConfigurator`, `RuntimeHookRegistrar`, `SyncExecutor`,
-//! `QuotaController`), and the `Engine` aggregate binding the first
+//! The surface splits across [`ScriptEngine`]
+//! (lifecycle, mandatory), the optional capability traits
+//! ([`ScriptLoader`], [`ScriptExecutor`], [`GlobalAccessor`],
+//! [`FunctionRegistrar`], [`ModuleRegistrar`], [`ScriptWatcher`],
+//! [`SandboxConfigurator`], [`RuntimeHookRegistrar`], [`SyncExecutor`],
+//! [`QuotaController`]), and the [`FullEngine`] aggregate binding the first
 //! seven together. The split is the point: lightweight engines (CEL,
 //! Expr) implement the core plus one capability and nothing else, and
 //! *callers* degrade gracefully around the gaps.
 //!
-//! Rust renders Go's `As*` interface-assertion helpers as probe methods
+//! Capability discovery uses probe methods
 //! on [`ScriptEngine`] — `fn as_loader(self: Arc<Self>) ->
 //! Option<Arc<dyn ScriptLoader>>` and its siblings. A capability an
 //! engine does not implement simply keeps the default `None` probe;
@@ -22,8 +22,8 @@
 //!
 //! `SandboxConfigurator`, `RuntimeHookRegistrar`, `SyncExecutor`, and
 //! `QuotaController` are deliberately **standalone** capabilities — the
-//! Go aggregate does not embed them, engines without a standard-library
-//! concept or a hot path satisfy `FullEngine` without them, and their
+//! aggregate does not embed them, engines without a standard-library
+//! concept or a hot path satisfy [`FullEngine`] without them, and their
 //! probes default to `None` there. See the standalone-capability test
 //! for the guarded shape.
 
@@ -35,7 +35,7 @@ use crate::{BoxFuture, ScriptError, ScriptValue, SharedScriptSource};
 /// A host function exposed to scripts, in the uniform
 /// [`ScriptValue`] marshalling.
 ///
-/// Go's `RegisterFunction(name, fn any)` accepts per-engine native
+/// Per-engine native callback registrations accept per-engine
 /// signatures; the contract's uniform shape is a
 /// [`ScriptValue`]-marshalled async closure, which every engine crate
 /// wraps onto its own native callback registration (Boa
@@ -49,15 +49,14 @@ pub type HostFunction = Arc<
 /// A runtime-initialization hook: run on the engine's runtime after it
 /// is created and ready, before any load or execute.
 ///
-/// The Go hook receives a `context.Context`; the context parameter is
-/// dropped across the port (the workspace doctrine: cancellation is
-/// dropping the future, deadlines wrap the call in `tokio::time::
+/// There is no context parameter (the workspace doctrine: cancellation
+/// is dropping the future, deadlines wrap the call in `tokio::time::
 /// timeout`), so the hook is a plain `'static` boxed future.
 pub type RuntimeHook = Arc<dyn Fn() -> BoxFuture<'static, Result<(), ScriptError>> + Send + Sync>;
 
 /// An execution budget for synchronous hot-path runs.
 ///
-/// The Go zero value means "no bound"; the Rust shape makes that
+/// An unset budget means "no bound"; the [`Option`] shape makes that
 /// explicit with [`Option`]. At least one field should be set for the
 /// quota to take effect — engines wire the fields onto their VM's
 /// cancellation primitive (instruction counters, epoch deadlines, fuel)
@@ -76,11 +75,11 @@ pub struct Quota {
 ///
 /// Implementations are shared behind [`Arc`] (the pools and the
 /// [`crate::Manager`] hold them that way), so every method takes
-/// `&self` with interior mutability — the Go predecessor's per-engine
-/// `RWMutex` discipline, moved into the engine's own state.
+/// `&self` with interior mutability — the per-engine
+/// locking discipline lives in the engine's own state.
 pub trait ScriptEngine: Send + Sync {
-    /// The engine's registry name (e.g. `"javascript"`), matching the
-    /// Go per-engine `Type` constant. The [`crate`] factory registry
+    /// The engine's registry name (e.g. `"javascript"`). The
+    /// [`crate`] factory registry
     /// keys on it.
     fn engine_type(&self) -> &'static str;
 
@@ -103,7 +102,7 @@ pub trait ScriptEngine: Send + Sync {
     fn clear_error(&self);
 
     // ------------------------------------------------------------------
-    // Capability probes — the Go `As*` helpers.
+    // Capability probes.
     //
     // Every probe defaults to `None`; an engine implementing the
     // corresponding capability overrides the probe to hand itself back
@@ -169,9 +168,7 @@ pub trait ScriptEngine: Send + Sync {
 /// object storage, memory, ...).
 pub trait ScriptLoader: Send + Sync {
     /// Binds (or, with `None`, unbinds) a script source; subsequent
-    /// loads read through it.
-    ///
-    /// The Go method is sync and so is this.
+    /// loads read through it. Binding is synchronous.
     fn set_source(&self, source: Option<SharedScriptSource>);
 
     /// Returns the currently bound source, if any.
@@ -227,8 +224,7 @@ pub trait ScriptExecutor: Send + Sync {
 /// Read/write access to global variables visible to scripts.
 pub trait GlobalAccessor: Send + Sync {
     /// Registers or overwrites a global variable visible to scripts.
-    ///
-    /// The Go value parameter is `any`; the port marshals through
+    /// Values marshal through
     /// [`ScriptValue`], the data-only bridge.
     fn register_global(&self, name: &str, value: ScriptValue) -> Result<(), ScriptError>;
 
@@ -241,8 +237,7 @@ pub trait GlobalAccessor: Send + Sync {
 pub trait FunctionRegistrar: Send + Sync {
     /// Registers a host function scripts can call by `name`.
     ///
-    /// The Go signature accepts `any` (per-engine native function
-    /// shapes); the port's uniform shape is the [`HostFunction`]
+    /// The uniform shape is the [`HostFunction`]
     /// closure, marshalled through [`ScriptValue`]. Engines wrap it
     /// onto their own native callback machinery.
     fn register_function(&self, name: &str, function: HostFunction) -> Result<(), ScriptError>;
@@ -265,9 +260,9 @@ pub trait ModuleRegistrar: Send + Sync {
     /// Registers a module under `name` so scripts can require or import
     /// it.
     ///
-    /// The Go module payload is `any` (a value table, a native loader,
-    /// ...); the contract carries data-table modules as
-    /// [`ScriptValue::Map`]. Native-loader modules are engine-specific
+    /// Modules come in two shapes: data tables carried as
+    /// [`ScriptValue::Map`], and native loaders, which are
+    /// engine-specific
     /// and live on the engine crate's own API.
     fn register_module(&self, name: &str, module: ScriptValue) -> Result<(), ScriptError>;
 }
@@ -310,8 +305,8 @@ pub trait SandboxConfigurator: Send + Sync {
 }
 
 /// An optional, **standalone** capability for injecting host modules,
-/// host functions, and reverse callbacks (a Go-side `hook.register`
-/// exposed to scripts) into the runtime after init and before any load
+/// host functions, and reverse callbacks — a `hook.register` surface
+/// exposed to scripts — into the runtime after init and before any load
 /// or execute.
 ///
 /// Engines that pool and recycle runtimes replay every registered hook
@@ -355,9 +350,8 @@ pub trait QuotaController: Send + Sync {
 /// The aggregate interface full-featured engines satisfy: the core
 /// lifecycle plus every embedded capability.
 ///
-/// The Go predecessor states the aggregate as one interface implementors
-/// satisfy implicitly; the port expresses the same implicit satisfaction
-/// with a blanket impl over the supertrait bundle, so an engine struct
+/// The aggregate is satisfied implicitly: a blanket impl over the
+/// supertrait bundle means an engine struct
 /// that implements the seven traits *is* a `dyn FullEngine` without
 /// naming this trait. Lightweight engines implement a subset — callers
 /// discover which through the probes on [`ScriptEngine`].
@@ -392,7 +386,7 @@ mod tests {
     use super::*;
     use crate::testutil::{LifecycleOnly, MockEngine, MockNoSandbox};
 
-    /// The Go capabilityless value: an engine implementing only the
+    /// The capabilityless engine: an engine implementing only the
     /// lifecycle trait probes `None` for every capability, and the
     /// standalone capabilities probe `None` even on a full engine.
     #[test]
@@ -418,7 +412,7 @@ mod tests {
         assert!(Arc::clone(&full).as_quota_controller().is_none());
     }
 
-    /// The Go `TestAsSandboxConfigurator_FromFullEngine`: the sandbox
+    /// The sandbox
     /// capability is discovered through the aggregate object, and the
     /// capability call flows into the same underlying engine.
     #[test]
@@ -436,7 +430,7 @@ mod tests {
         );
     }
 
-    /// The Go `TestSandboxConfigurator_IsStandaloneCapability`: an
+    /// Standalone-capability check: an
     /// engine without `set_open_libs` still satisfies the aggregate,
     /// implements the embedded watcher capability, and probes `None`
     /// for the sandbox — while an engine with it probes `Some`.

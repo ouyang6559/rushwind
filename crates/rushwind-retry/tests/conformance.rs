@@ -1,6 +1,5 @@
 //! Retry conformance: max attempts, backoff pacing, jitter bounds,
-//! non-retryable short-circuit, and the total timeout — the Go
-//! `retry_test.go` shapes.
+//! non-retryable short-circuit, and the total timeout.
 
 #![cfg(test)]
 
@@ -36,7 +35,7 @@ async fn max_attempts_carries_last_error() {
 }
 
 /// A non-retryable error surfaces immediately without burning the
-/// remaining attempts — the Go Classifier.
+/// remaining attempts.
 #[tokio::test]
 async fn non_retryable_short_circuits() {
     let retrier = Retrier::default().max_attempts(5);

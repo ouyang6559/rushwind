@@ -1,5 +1,4 @@
-//! JWT engine for the Rust authentication contract, ported from
-//! `go-wind-plugins/security/authn/jwt` over the `jsonwebtoken` crate.
+//! JWT engine for the Rust authentication contract, over the `jsonwebtoken` crate.
 //!
 //! Tokens ride as bearer credentials:
 //!
@@ -9,7 +8,7 @@
 //!
 //! Minting signs the claim bag with the configured algorithm and key;
 //! validation verifies the signature and the time-window claims. The
-//! validation profile mirrors `golang-jwt/v5`'s defaults:
+//! validation profile:
 //!
 //! - `exp` and `nbf` are validated **when present**, with zero leeway;
 //! - `exp` is not required — a token without one parses;
@@ -19,16 +18,20 @@
 //! Keys arrive through the builder: a symmetric secret
 //! ([`with_key`](JwtOptions::with_key), both halves), or an asymmetric
 //! pair through typed keys or the PEM helpers — private PEMs mint,
-//! public PEMs verify, the asymmetry the Go engine gives.
+//! public PEMs verify.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `ES512` supported | `jsonwebtoken` has no ES512 — [`with_algorithm`](JwtOptions::with_algorithm) rejects it as [`AuthnError::UnsupportedSigningMethod`] |
-//! | an unknown algorithm name silently nils the signing method, surfacing later | rejected at builder time |
-//! | a PEM parse failure silently skips the option | [`GetKeyFailed`](AuthnError::GetKeyFailed) at builder time — fail loud, not a silently unconfigured engine |
-//! | library error variants differ where the two libraries classify differently; the mapping below pins what this engine returns |
+//! - `ES512`: the underlying `jsonwebtoken` library has no ES512 —
+//!   [`with_algorithm`](JwtOptions::with_algorithm) rejects it as
+//!   [`AuthnError::UnsupportedSigningMethod`].
+//! - an unknown algorithm name is rejected at builder time, not surfaced
+//!   later.
+//! - a PEM parse failure rejects with
+//!   [`GetKeyFailed`](AuthnError::GetKeyFailed) at builder time — fail
+//!   loud, not a silently unconfigured engine.
+//! - library error variants map where the underlying library classifies
+//!   them; the mapping below pins what this engine returns.
 //!
 //! The error mapping from `jsonwebtoken`: `ExpiredSignature` →
 //! [`TokenExpired`](AuthnError::TokenExpired), `InvalidSignature` →
@@ -44,8 +47,8 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 
 use rushwind_authn::{AuthClaims, Authenticator, AuthnError, SCHEME_BEARER};
 
-/// The algorithm-name table, the Go `jwtV5.GetSigningMethod` lookup with
-/// `ES512` removed (unsupported by the underlying library).
+/// The algorithm-name table, with
+/// `ES512` absent (unsupported by the underlying library).
 fn parse_algorithm(name: &str) -> Option<Algorithm> {
     Some(match name {
         "HS256" => Algorithm::HS256,
@@ -81,7 +84,7 @@ impl std::fmt::Debug for JwtOptions {
 }
 
 impl Default for JwtOptions {
-    /// The Go default: HS256, no keys.
+    /// The default: HS256, no keys.
     fn default() -> Self {
         Self {
             algorithm: Algorithm::HS256,
@@ -107,7 +110,7 @@ impl JwtOptions {
 
     /// A symmetric secret used for both minting and verification. Only
     /// meaningful for the HS family; an asymmetric algorithm with a
-    /// secret-shaped key fails at sign time, the Go shape.
+    /// secret-shaped key fails at sign time.
     pub fn with_key(mut self, secret: &[u8]) -> Self {
         self.encoding_key = Some(EncodingKey::from_secret(secret));
         self.decoding_key = Some(DecodingKey::from_secret(secret));
@@ -127,8 +130,8 @@ impl JwtOptions {
     }
 
     /// Parses a PEM-encoded RSA private key for minting. A parse failure
-    /// rejects with [`AuthnError::GetKeyFailed`] — the Go engine skips
-    /// silently, leaving the engine unconfigured.
+    /// rejects with [`AuthnError::GetKeyFailed`] instead of leaving the
+    /// engine silently unconfigured.
     pub fn with_rsa_private_key_from_pem(self, pem: &[u8]) -> Result<Self, AuthnError> {
         let key = EncodingKey::from_rsa_pem(pem).map_err(|_| AuthnError::GetKeyFailed)?;
         Ok(self.with_encoding_key(key))
@@ -176,9 +179,8 @@ impl JwtAuthenticator {
         Self { options }
     }
 
-    /// The validation profile mirroring `golang-jwt/v5` defaults:
-    /// exp/nbf validated when present, zero leeway, exp not required,
-    /// algorithm pinned to the configured one.
+    /// The validation profile: exp/nbf validated when present, zero
+    /// leeway, exp not required, algorithm pinned to the configured one.
     fn validation(&self) -> Validation {
         let mut validation = Validation::new(self.options.algorithm);
         validation.leeway = 0;
@@ -195,7 +197,7 @@ impl Authenticator for JwtAuthenticator {
     }
 
     fn authenticate_token(&self, token: &str) -> Result<AuthClaims, AuthnError> {
-        // The Go parseToken: no keyFunc configured → the keyfunc error.
+        // No decoding key configured → the keyfunc error.
         let Some(decoding_key) = &self.options.decoding_key else {
             return Err(AuthnError::MissingKeyFunc);
         };
@@ -215,7 +217,7 @@ impl Authenticator for JwtAuthenticator {
     }
 
     fn create_identity(&self, claims: &AuthClaims) -> Result<String, AuthnError> {
-        // The Go generateToken: no signing key → the keyfunc error;
+        // No signing key → the keyfunc error;
         // a signing failure → the sign failure.
         let Some(encoding_key) = &self.options.encoding_key else {
             return Err(AuthnError::MissingKeyFunc);
@@ -318,7 +320,7 @@ MCowBQYDK2VwAyEAzwQGegWNA/iKUVekymVdpsE8TorV48DjLobsnYP7VBI=
     #[test]
     fn hs256_is_the_default_algorithm() {
         // No with_algorithm call: the engine mints and verifies under
-        // HS256, the Go default.
+        // HS256, the default algorithm.
         let auth = hs_engine(b"default-secret");
         let token = auth.create_identity(&subject_claims("alice")).unwrap();
         let claims = auth.authenticate_token(&token).unwrap();
@@ -384,7 +386,7 @@ MCowBQYDK2VwAyEAzwQGegWNA/iKUVekymVdpsE8TorV48DjLobsnYP7VBI=
     #[test]
     fn tokens_without_exp_parse() {
         // required_spec_claims is cleared: a token with no exp parses,
-        // the golang-jwt shape where exp is validated only when present.
+        // exp is validated only when present.
         let auth = hs_engine(b"no-exp");
         let token = auth.create_identity(&subject_claims("dave")).unwrap();
         let claims = auth.authenticate_token(&token).unwrap();

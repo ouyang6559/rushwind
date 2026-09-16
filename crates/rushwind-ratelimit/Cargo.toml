@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-ratelimit"
-description = "Rate-limiting contract for RushWind: the algorithm-agnostic Limiter trait, extracted from go-wind-plugins/ratelimit."
+description = "Rate-limiting contract for RushWind: the algorithm-agnostic Limiter trait."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

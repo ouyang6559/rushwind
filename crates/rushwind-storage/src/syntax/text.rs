@@ -1,6 +1,6 @@
 //! The AIP-flavored text filter language.
 //!
-//! go-crud accepts filter strings in the Google AIP-160 style —
+//! Filter strings come in the Google AIP-160 style —
 //! `name = "bolt" AND (age > 10 OR score <= 2.5)` — alongside protojson.
 //! This module parses that text into the same [`FilterExpr`] tree the wire
 //! layer produces, with the operator complements of the contract's

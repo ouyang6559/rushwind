@@ -62,7 +62,7 @@ async fn publish_subscribes_and_delivers() {
 }
 
 /// Publishes carry only the payload — headers and metadata have no
-/// Redis pub-sub carrier, exactly as the Go engine publishes.
+/// Redis pub-sub carrier.
 #[tokio::test]
 async fn deliveries_carry_payload_only() {
     let subscriber_broker = broker();

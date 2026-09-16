@@ -147,7 +147,7 @@ async fn list_accepts_the_protojson_document() {
         .await;
     }
 
-    // Exactly the document a Go client would put on the wire (URL-encoded).
+    // Exactly the document an external client would put on the wire (URL-encoded).
     let q = r#"{"filterExpr":{"conditions":[{"field":"age","op":"GTE","value":10}]},"paginationType":{"pageBased":{"page":1,"pageSize":10}},"sorting":[{"field":"age","direction":"ASC"}]}"#;
     let encoded = q
         .bytes()

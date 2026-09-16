@@ -1,7 +1,7 @@
 //! The three paging strategies and the result envelope.
 //!
-//! go-crud ships `Page` (page number + size), `Offset`, and `Token`
-//! (cursor / infinite scroll) requests; the contract keeps all three. The
+//! Three paging shapes: `Page` (page number + size), `Offset`, and `Token`
+//! (cursor / infinite scroll); the contract keeps all three. The
 //! cursor codec lives here too so every engine reads and writes the same
 //! opaque token format.
 
@@ -12,8 +12,7 @@ pub const MAX_LIMIT: u32 = 1_000;
 
 /// How a list query positions itself in the result stream.
 ///
-/// The default is page 1 with size 20 — the same default page size go-crud's
-/// proto ships.
+/// The default is page 1 with size 20.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Paging {
     /// Page-number paging: 1-based page plus page size.

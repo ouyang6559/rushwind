@@ -1,5 +1,4 @@
-//! ACL engine for the RushWind authorization contract, ported from
-//! `go-wind-plugins/security/authz/acl`.
+//! ACL engine for the RushWind authorization contract.
 //!
 //! Rules evaluate in order. Each rule matches a subject, an action, and
 //! a resource — each pattern either a literal or a
@@ -38,9 +37,9 @@ pub const EFFECT_ALLOW: &str = "allow";
 /// The deny effect.
 pub const EFFECT_DENY: &str = "deny";
 
-/// One ACL entry. The JSON field names match the Go predecessor's tags;
-/// an absent effect deserializes to the empty string, which the
-/// evaluation treats as allow — the Go behavior.
+/// One ACL entry. An absent effect deserializes to the empty string,
+/// which the
+/// evaluation treats as allow.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Rule {
     /// The subject pattern.
@@ -71,7 +70,7 @@ pub struct AclOptions {
 }
 
 impl AclOptions {
-    /// Options with the Go defaults: no rules, `*` wildcard, deny by
+    /// Options with the defaults: no rules, `*` wildcard, deny by
     /// default, deny overrides.
     pub fn new() -> Self {
         Self {
@@ -190,7 +189,7 @@ impl Engine for AclEngine {
         projects: Projects,
     ) -> Result<Projects, AuthzError> {
         // The ACL model has no project axis: the subject check decides
-        // per project, the Go behavior.
+        // per project.
         let config = self.config.read().expect("acl config lock poisoned");
         let mut result = vec![];
         for project in projects {
@@ -233,13 +232,13 @@ impl Engine for AclEngine {
     }
 
     fn filter_authorized_projects(&self, _subjects: Subjects) -> Result<Projects, AuthzError> {
-        // No project axis: the Go engine returns the empty list.
+        // No project axis: the empty list.
         Ok(vec![])
     }
 
     fn set_policies(&self, policies: PolicyMap, _roles: RoleMap) -> Result<(), AuthzError> {
-        // The Go type assertion skips a payload that is not its rule
-        // type; the JSON deserialization path skips the same way.
+        // A payload that does not deserialize into the rule
+        // type is silently skipped.
         if let Some(payload) = policies.get("rules") {
             if let Ok(rules) = serde_json::from_value::<Vec<Rule>>(payload.clone()) {
                 self.set_rules(rules);
@@ -249,7 +248,7 @@ impl Engine for AclEngine {
     }
 }
 
-/// The Go check: collect allow/deny over all matching rules, then apply
+/// The verdict: collect allow/deny over all matching rules, then apply
 /// the override and default.
 fn evaluate(config: &Config, subject: &str, action: &str, resource: &str) -> bool {
     let mut allowed = false;
@@ -279,10 +278,10 @@ fn evaluate(config: &Config, subject: &str, action: &str, resource: &str) -> boo
     !config.default_deny
 }
 
-/// The Go matchValue: a pattern equal to the wildcard matches anything;
+/// Pattern matching: a pattern equal to the wildcard matches anything;
 /// a literal matches itself; a trailing wildcard anchors a prefix match;
 /// a leading wildcard anchors a suffix match. The suffix-wildcard arm
-/// runs first, the Go order.
+/// runs first.
 fn matches_pattern(pattern: &str, value: &str, wildcard: &str) -> bool {
     if pattern == wildcard {
         return true;
@@ -485,7 +484,7 @@ mod tests {
     #[test]
     fn malformed_policy_payloads_are_skipped() {
         // A payload that is not a rule list: skipped, no error, no
-        // change — the Go assertion-failure behavior.
+        // change.
         let engine = AclEngine::new(AclOptions::new());
         let mut policies = PolicyMap::new();
         policies.insert("rules".to_string(), serde_json::json!(42));

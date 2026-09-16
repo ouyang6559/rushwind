@@ -1,5 +1,4 @@
-//! The Elasticsearch engine for the [`Repository`] contract — go-crud's
-//! `elasticsearch/` module.
+//! The Elasticsearch engine for the [`Repository`] contract.
 //!
 //! A thin `reqwest` REST client: documents are the stored rows, `_source`
 //! is the record, and every write carries `refresh=true` so reads-after-

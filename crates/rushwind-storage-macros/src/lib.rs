@@ -1,5 +1,4 @@
-//! Derive macros for the RushWind storage mapper pair — the compile-time
-//! spelling of go-crud's `go-utils/mapper` DTO↔Entity mapping.
+//! Derive macros for the RushWind storage mapper pair.
 //!
 //! ```ignore
 //! #[derive(ToRecord, FromRecord)]

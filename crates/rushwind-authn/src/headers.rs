@@ -1,10 +1,9 @@
-//! The `Authorization` header surface and the credential extraction the
-//! Go predecessor performs in `metadata.go`.
+//! The `Authorization` header surface and the credential extraction built
+//! on it.
 //!
-//! The Go code extracts from gRPC metadata, whose keys are normalized to
-//! lowercase. The header pairs a RushWind transport exposes preserve the
-//! case as presented, so the name and scheme comparisons here are
-//! case-insensitive — a superset that accepts both shapes.
+//! HTTP presents header names and scheme values in either case, so the
+//! name and scheme comparisons here are
+//! case-insensitive — they accept both shapes.
 
 use crate::error::AuthnError;
 
@@ -14,8 +13,7 @@ pub const HEADER_AUTHORIZE: &str = "Authorization";
 pub const SCHEME_BEARER: &str = "Bearer";
 /// The RFC 7617 basic credential scheme.
 pub const SCHEME_BASIC: &str = "Basic";
-/// The digest credential scheme. Surface parity with the Go constants; no
-/// engine consumes it yet.
+/// The digest credential scheme. No engine consumes it yet.
 pub const SCHEME_DIGEST: &str = "Digest";
 
 /// Locates the `Authorization` header among a request's header pairs,
@@ -28,10 +26,9 @@ fn authorization_header(headers: &[(String, String)]) -> Option<&str> {
         .filter(|value| !value.is_empty())
 }
 
-/// Extracts the credential token from the `Authorization` header, the port
-/// of the Go `AuthFromMD`.
+/// Extracts the credential token from the `Authorization` header.
 ///
-/// Errors follow the Go mapping exactly:
+/// Errors map as follows:
 ///
 /// - missing or empty header → [`AuthnError::Unauthenticated`];
 /// - present but not `<scheme> <token>` → [`AuthnError::BadAuthorization`];
@@ -56,10 +53,8 @@ pub fn auth_from_headers(
     Ok(token.to_string())
 }
 
-/// Formats a scheme-qualified `Authorization` value, the port of the Go
-/// `formatToken`. The Go side injects this into outgoing context metadata
-/// (`MDWithAuth`); placing the returned value on a client request's
-/// headers is the caller's job.
+/// Formats a scheme-qualified `Authorization` value. Placing the returned
+/// value on a client request's headers is the caller's job.
 pub fn format_authorization(scheme: &str, token: &str) -> String {
     format!("{scheme} {token}")
 }

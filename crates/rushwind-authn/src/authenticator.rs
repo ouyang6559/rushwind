@@ -1,8 +1,7 @@
 //! The authentication contract.
 //!
-//! One trait, one credential scheme per engine crate — the shape of the Go
-//! predecessor's `Authenticator` interface, re-expressed around a header
-//! slice instead of a request context.
+//! One trait, one credential scheme per engine crate, re-expressed around a
+//! header slice instead of a request context.
 
 use crate::claims::AuthClaims;
 use crate::error::AuthnError;
@@ -13,8 +12,7 @@ use crate::headers::auth_from_headers;
 /// Engines live in their own crates (`rushwind-authn-*`), each implementing
 /// this trait for one scheme. The extraction half has a default — the
 /// `Authorization`-header shape most schemes ride — and [`authenticate`]
-/// composes extraction with validation, mirroring the Go engines' uniform
-/// `Authenticate` shape.
+/// composes extraction with validation in one uniform call.
 ///
 /// [`authenticate`]: Authenticator::authenticate
 pub trait Authenticator: Send + Sync {
@@ -28,8 +26,8 @@ pub trait Authenticator: Send + Sync {
 
     /// Extracts the raw credential from a request's header pairs.
     ///
-    /// The default is the port of the Go `AuthFromMD`: the
-    /// `Authorization` header whose scheme matches [`Self::scheme`]. The
+    /// The default looks at the `Authorization` header whose scheme
+    /// matches [`Self::scheme`]. The
     /// granular extraction errors are documented on
     /// [`auth_from_headers`]; [`Authenticator::authenticate`] collapses
     /// them.
@@ -45,10 +43,9 @@ pub trait Authenticator: Send + Sync {
 
     /// Authenticates one request: extraction, then validation.
     ///
-    /// This composes the halves exactly as every Go engine's
-    /// `Authenticate` does — including the collapse of every extraction
-    /// failure to [`AuthnError::MissingBearerToken`], whatever the
-    /// granular extraction error was.
+    /// This composes the halves — including the collapse of every
+    /// extraction failure to [`AuthnError::MissingBearerToken`], whatever
+    /// the granular extraction error was.
     fn authenticate(&self, headers: &[(String, String)]) -> Result<AuthClaims, AuthnError> {
         let token = match self.extract_token(headers) {
             Ok(token) => token,

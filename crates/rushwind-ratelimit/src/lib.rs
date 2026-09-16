@@ -1,30 +1,28 @@
-//! Rate-limiting contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/ratelimit`: an algorithm-agnostic
+//! Rate-limiting contract for RushWind: an algorithm-agnostic
 //! [`Limiter`] interface. Concrete implementations (token bucket,
 //! BBR, ...) live in `rushwind-ratelimit-*` crates and implement this
 //! trait so business code depends only on the contract.
 //!
 //! # Deferred engine: sentinel
 //!
-//! The Go sentinel engine adapts `sentinel-golang`, a Go-only
-//! flow-control SDK. A Rust port would have to reimplement Sentinel's
-//! core (token calculation, reject/throttle behaviors, warm-up,
-//! statistic windows) rather than wrap an adapter. The direct-
+//! A Sentinel engine is deferred: building one means reimplementing
+//! Sentinel's core (no maintained Rust SDK offers an equivalent to
+//! wrap) — token calculation, reject/throttle behaviors, warm-up,
+//! statistic windows. The direct-
 //! threshold + reject rule shape maps 1:1 onto the token-bucket
 //! engine (burst = threshold) when that rule shape is all a caller
 //! needs.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! Go's `Allow() (ok, err)` packs the rejection sentinel `ErrLimited`
-//! into the error slot. Rust splits the outcomes: [`Limiter::allow`]
-//! returns `Ok(false)` when the request is rejected and `Ok(true)`
-//! when permitted — rejections are normal outcomes, not errors. The
-//! closed-limiter distinction from Go's `(false, ErrLimited)` is not
+//! [`Limiter::allow`] returns `Ok(false)` when the request is
+//! rejected and `Ok(true)`
+//! when permitted — rejections are normal outcomes, not errors.
+//! The closed-limiter vs exhausted-limiter distinction is not
 //! carried: a closed limiter rejects like an exhausted one.
 //!
-//! Go's `Wait(ctx)` blocks until permitted or the context is
-//! cancelled. Cancellation rides the future here — dropping the
+//! [`Limiter::wait`] blocks until permitted or cancelled;
+//! cancellation rides the future — dropping the
 //! [`Limiter::wait`] future is the cancellation. A permanently
 //! exhausted limiter (e.g. a closed one) still returns
 //! [`RateLimitError::Limited`].
@@ -43,7 +41,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 #[non_exhaustive]
 pub enum RateLimitError {
     /// The rate limit is permanently exhausted (e.g. the limiter was
-    /// closed) — the Go `ErrLimited` from `Wait`.
+    /// closed).
     Limited,
     /// The engine could not complete the operation.
     Failed(String),
@@ -60,7 +58,7 @@ impl std::fmt::Display for RateLimitError {
 
 impl std::error::Error for RateLimitError {}
 
-/// The core rate-limiting contract — the Go `Limiter`. Implementations
+/// The core rate-limiting contract. Implementations
 /// must be callable through shared references (`&self`) and safe for
 /// concurrent use.
 pub trait Limiter: Send + Sync {

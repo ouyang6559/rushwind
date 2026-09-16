@@ -6,10 +6,10 @@
 //!
 //! [`transaction`]: rushwind_transaction
 //!
-//! # The Go shapes, translated
+//! # The wire protocol
 //!
-//! The Go engine wraps `github.com/dtm-labs/client/dtmcli`; the
-//! Rust engine speaks the same wire directly — every operation is a
+//! The engine speaks DTM's wire directly, as the reference
+//! `github.com/dtm-labs/client/dtmcli` client does — every operation is a
 //! JSON POST to `{server}/{submit|prepare|abort|registerBranch}`
 //! carrying the trans base (`gid`, `trans_type`, parallel `steps`
 //! and `payloads`, `concurrent`, `protocol`, ...), with the
@@ -29,10 +29,10 @@
 //! (`{"orders":...,"concurrent":true}` for a concurrent saga,
 //! `{"delay":N}` for a delayed msg) ride `custom_data`; the
 //! branch-id generator emits zero-padded two-digit suffixes ("01",
-//! "02", ...) with the Go panic sites as typed errors. The Go
-//! wrapper's participant-side, database-coupled helpers
-//! (`BarrierFromQuery`, `XaLocalTransaction`, `DoAndSubmitDB` — all
-//! take a `*sql.DB`) have no port: the barrier machinery is the
+//! "02", ...) with overflow reported as typed errors. The
+//! participant-side, database-coupled helpers of the reference
+//! client (`BarrierFromQuery`, `XaLocalTransaction`, `DoAndSubmitDB` — all
+//! take a `*sql.DB`) are not provided: the barrier machinery is the
 //! caller's business, like the orchestration it serves.
 //! `Msg::do_and_submit` keeps the pure-HTTP shape: prepare,
 //! business, then query-prepared (GET, branch id "00", op "msg")
@@ -40,8 +40,7 @@
 //! FAILURE.
 //!
 //! The client is stateless — one fresh HTTP exchange per call — so
-//! [`TransactionClient::close`] is a no-op, exactly like the Go
-//! wrapper's `Close`.
+//! [`TransactionClient::close`] is a no-op.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -52,14 +51,13 @@ use std::sync::Arc;
 
 use rushwind_transaction::{BoxFuture, TransactionClient, TransactionError};
 
-/// The DTM server address when settings name none — the Go
-/// `defaultServer`.
+/// The DTM server address when settings name none.
 const DEFAULT_SERVER: &str = "http://localhost:36789/api/dtmsvr";
 
-/// The sub-branch count ceiling — the Go panic site at 99.
+/// The sub-branch count ceiling; registering beyond it is an error.
 const BRANCH_LIMIT: u32 = 99;
 
-/// The msg topic URL prefix — the Go `MsgTopicPrefix`.
+/// The msg topic URL prefix.
 const MSG_TOPIC_PREFIX: &str = "topic://";
 
 struct Inner {
@@ -68,7 +66,7 @@ struct Inner {
     server: String,
 }
 
-/// One branch invocation, bundling the Go `TransRequestBranch`
+/// One branch invocation, bundling the DTM `TransRequestBranch`
 /// arguments.
 struct BranchRequest<'a> {
     gid: &'a str,
@@ -82,7 +80,7 @@ struct BranchRequest<'a> {
 }
 
 impl Inner {
-    /// POSTs the trans base to `{server}/{operation}` — the Go
+    /// POSTs the trans base to `{server}/{operation}` — the DTM
     /// `TransCallDtm`: a non-success status or a body containing
     /// FAILURE is [`TransactionError::Dtm`].
     async fn call_dtm(
@@ -111,7 +109,7 @@ impl Inner {
         Ok(())
     }
 
-    /// Registers a branch — the Go `TransRegisterBranch`: a flat
+    /// Registers a branch — the DTM `TransRegisterBranch`: a flat
     /// string map POSTed to `{server}/registerBranch`.
     async fn register_branch(
         &self,
@@ -150,7 +148,7 @@ impl Inner {
         Ok(())
     }
 
-    /// Invokes a business branch endpoint — the Go
+    /// Invokes a business branch endpoint — the DTM
     /// `TransRequestBranch` + `HTTPResp2DtmError`.
     async fn request_branch(&self, branch: BranchRequest<'_>) -> Result<(), TransactionError> {
         let mut request = self.http.request(branch.method, branch.url).query(&[
@@ -184,15 +182,14 @@ impl Inner {
     }
 }
 
-/// A DTM (Distributed Transaction Manager) client — the Go
-/// `dtm.Client`.
+/// A DTM (Distributed Transaction Manager) client.
 pub struct DtmClient {
     inner: Arc<Inner>,
 }
 
-/// The wire shape every DTM operation POSTs — the Go `TransBase`.
+/// The wire shape every DTM operation POSTs — the DTM `TransBase`.
 /// `concurrent` and `protocol` serialize unconditionally, matching
-/// the Go struct's tags (`concurrent` has no omitempty; `protocol`
+/// the reference struct's tags (`concurrent` has no omitempty; `protocol`
 /// is always the empty string for the plain HTTP protocol).
 #[derive(serde::Serialize)]
 struct TransBaseWire<'a> {
@@ -228,14 +225,14 @@ impl<'a> TransBaseWire<'a> {
     }
 }
 
-/// Serializes a business payload to its wire value — the Go
+/// Serializes a business payload to its wire value — the DTM
 /// `MustMarshalString`, with the panic as
 /// [`TransactionError::Encode`].
 fn marshal(payload: &impl serde::Serialize) -> Result<serde_json::Value, TransactionError> {
     serde_json::to_value(payload).map_err(|e| TransactionError::Encode(format!("payload: {e}")))
 }
 
-/// Maps a branch/endpoint response — the Go `HTTPResp2DtmError`.
+/// Maps a branch/endpoint response — the DTM `HTTPResp2DtmError`.
 fn resp_to_dtm_error(status: u16, body: String) -> Result<(), TransactionError> {
     if status == 425 || body.contains("ONGOING") {
         Err(TransactionError::Ongoing(body))
@@ -248,9 +245,9 @@ fn resp_to_dtm_error(status: u16, body: String) -> Result<(), TransactionError> 
     }
 }
 
-/// The zero-padded sub-branch id generator — the Go `BranchIDGen`,
-/// panics as typed errors. Ids are "01", "02", ... within a global
-/// transaction.
+/// The zero-padded sub-branch id generator — the DTM `BranchIDGen`,
+/// panics surfaced as typed errors. Ids are "01", "02", ... within a
+/// global transaction.
 struct BranchIdGen {
     next: u32,
 }
@@ -270,14 +267,12 @@ impl BranchIdGen {
 }
 
 impl DtmClient {
-    /// Creates a client for the default DTM server — the Go
-    /// `NewClient()` with no options.
+    /// Creates a client for the default DTM server.
     pub fn new() -> Self {
         Self::with_server(DEFAULT_SERVER)
     }
 
-    /// Creates a client for an explicit DTM server — the Go
-    /// `WithServer` option.
+    /// Creates a client for an explicit DTM server.
     pub fn with_server(server: impl Into<String>) -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -298,12 +293,12 @@ impl DtmClient {
         Ok(Self::with_server(server))
     }
 
-    /// The DTM server address — the Go `Client.Server`.
+    /// The DTM server address.
     pub fn server(&self) -> &str {
         &self.inner.server
     }
 
-    /// Starts a saga transaction builder — the Go `NewSaga`.
+    /// Starts a saga transaction builder — the DTM `NewSaga`.
     pub fn saga(&self, gid: impl Into<String>) -> Saga {
         Saga {
             inner: self.inner.clone(),
@@ -315,7 +310,7 @@ impl DtmClient {
         }
     }
 
-    /// Starts a 2-phase message transaction builder — the Go
+    /// Starts a 2-phase message transaction builder — the DTM
     /// `NewMsg`.
     pub fn msg(&self, gid: impl Into<String>) -> Msg {
         Msg {
@@ -327,11 +322,11 @@ impl DtmClient {
         }
     }
 
-    /// Runs a TCC global transaction — the Go
+    /// Runs a TCC global transaction — the DTM
     /// `TccGlobalTransaction`. The closure receives the branch
     /// handle; an `Ok` outcome submits (confirm), an error aborts
-    /// (cancel) with the error text as the rollback reason — the Go
-    /// `DeferDo` split, with the abort's own error swallowed.
+    /// (cancel) with the error text as the rollback reason, with the
+    /// abort's own error swallowed.
     pub async fn tcc_global_transaction<F, Fut>(
         &self,
         gid: impl Into<String>,
@@ -359,7 +354,7 @@ impl DtmClient {
         }
     }
 
-    /// Runs an XA global transaction — the Go `XaGlobalTransaction`.
+    /// Runs an XA global transaction — the DTM `XaGlobalTransaction`.
     /// The closure registers branches through the [`Xa`] handle; an
     /// `Ok` outcome submits, an error aborts.
     pub async fn xa_global_transaction<F, Fut>(
@@ -401,7 +396,7 @@ impl TransactionClient for DtmClient {
     }
 }
 
-/// A saga transaction builder — the Go `Saga`. Steps run in order;
+/// A saga transaction builder — the DTM `Saga`. Steps run in order;
 /// a failing step compensates all completed ones in reverse.
 pub struct Saga {
     inner: Arc<Inner>,
@@ -414,7 +409,7 @@ pub struct Saga {
 
 impl Saga {
     /// Adds a step: the forward `action` URL, the `compensate` URL,
-    /// and the payload sent to both — the Go `Saga.Add`.
+    /// and the payload sent to both — the DTM `Saga.Add`.
     pub fn add(
         self,
         action: impl Into<String>,
@@ -440,20 +435,20 @@ impl Saga {
         })
     }
 
-    /// Orders `branch` to run only after `pre_branches` — the Go
+    /// Orders `branch` to run only after `pre_branches` — the DTM
     /// `AddBranchOrder`. Indices are zero-based step numbers.
     pub fn add_branch_order(mut self, branch: usize, pre_branches: Vec<usize>) -> Self {
         self.orders.insert(branch.to_string(), pre_branches);
         self
     }
 
-    /// Enables concurrent branch execution — the Go `SetConcurrent`.
+    /// Enables concurrent branch execution — the DTM `SetConcurrent`.
     pub fn set_concurrent(mut self) -> Self {
         self.concurrent = true;
         self
     }
 
-    /// Submits the saga to the DTM server — the Go `Saga.Submit`.
+    /// Submits the saga to the DTM server — the DTM `Saga.Submit`.
     pub async fn submit(self) -> Result<(), TransactionError> {
         let mut base = TransBaseWire::new(&self.gid, "saga");
         base.steps = self.steps;
@@ -470,7 +465,7 @@ impl Saga {
     }
 }
 
-/// A 2-phase message transaction builder — the Go `Msg`.
+/// A 2-phase message transaction builder — the DTM `Msg`.
 pub struct Msg {
     inner: Arc<Inner>,
     gid: String,
@@ -481,7 +476,7 @@ pub struct Msg {
 
 impl Msg {
     /// Adds a step: the `action` URL invoked on commit, with its
-    /// payload — the Go `Msg.Add`.
+    /// payload — the DTM `Msg.Add`.
     pub fn add(
         self,
         action: impl Into<String>,
@@ -506,7 +501,7 @@ impl Msg {
     }
 
     /// Adds a topic-based step for message-queue integration — the
-    /// Go `AddTopic` (`topic://` prefix).
+    /// DTM `AddTopic` (`topic://` prefix).
     pub fn add_topic(
         self,
         topic: impl Into<String>,
@@ -515,14 +510,14 @@ impl Msg {
         self.add(format!("{MSG_TOPIC_PREFIX}{}", topic.into()), payload)
     }
 
-    /// Delays the action invocation — the Go `SetDelay`, seconds.
+    /// Delays the action invocation — the DTM `SetDelay`, seconds.
     pub fn set_delay(mut self, delay: u64) -> Self {
         self.delay = delay;
         self
     }
 
     /// Prepares the message; DTM later calls `query_prepared` to
-    /// decide whether to proceed — the Go `Msg.Prepare`.
+    /// decide whether to proceed — the DTM `Msg.Prepare`.
     pub async fn prepare(&self, query_prepared: impl Into<String>) -> Result<(), TransactionError> {
         let mut base = TransBaseWire::new(&self.gid, "msg");
         base.steps = self.steps.clone();
@@ -531,7 +526,7 @@ impl Msg {
         self.inner.call_dtm(&base, "prepare").await
     }
 
-    /// Submits the message — the Go `Msg.Submit`.
+    /// Submits the message — the DTM `Msg.Submit`.
     pub async fn submit(&self) -> Result<(), TransactionError> {
         let mut base = TransBaseWire::new(&self.gid, "msg");
         base.steps = self.steps.clone();
@@ -544,14 +539,15 @@ impl Msg {
         self.inner.call_dtm(&base, "submit").await
     }
 
-    /// Runs prepare → business → submit in one call — the Go
+    /// Runs prepare → business → submit in one call — the DTM
     /// `DoAndSubmit`. A business [`TransactionError::Failure`] aborts
     /// directly; any other business error queries `query_prepared`
     /// (GET, branch id "00", op "msg") to learn the outcome and then
     /// submits — or aborts when the outcome is FAILURE. The
-    /// DB-coupled barrier handle of the Go version (`DoAndSubmitDB`)
-    /// is not carried over; the business error takes precedence over
-    /// any flow error, as in Go.
+    /// DB-coupled barrier handle of the reference client
+    /// (`DoAndSubmitDB`)
+    /// is not provided; the business error takes precedence over
+    /// any flow error.
     pub async fn do_and_submit<F, Fut>(
         self,
         query_prepared: impl Into<String>,
@@ -568,7 +564,7 @@ impl Msg {
             // Business succeeded: straight to submit.
             None => self.submit().await.err(),
             // Business reported FAILURE: abort, return the business
-            // error — the Go ErrFailure path.
+            // error — the ErrFailure path.
             Some(error @ TransactionError::Failure(_)) => {
                 let _ = self.abort(&query_prepared).await;
                 Some(error.clone())
@@ -591,7 +587,7 @@ impl Msg {
         }
     }
 
-    /// Aborts the message — the Go `TransCallDtm(base, "abort")`
+    /// Aborts the message — `TransCallDtm(base, "abort")`
     /// with the base as Prepare left it.
     async fn abort(&self, query_prepared: &str) -> Result<(), TransactionError> {
         let mut base = TransBaseWire::new(&self.gid, "msg");
@@ -602,7 +598,7 @@ impl Msg {
     }
 
     /// Asks the query-prepared endpoint for the business outcome —
-    /// the Go requestBranch(GET, branch "00", op "msg").
+    /// requestBranch(GET, branch "00", op "msg").
     async fn query_prepared_outcome(&self, query_prepared: &str) -> Result<(), TransactionError> {
         self.inner
             .request_branch(BranchRequest {
@@ -620,7 +616,7 @@ impl Msg {
 }
 
 /// A TCC branch handle handed to the
-/// [`DtmClient::tcc_global_transaction`] closure — the Go `Tcc`.
+/// [`DtmClient::tcc_global_transaction`] closure — the DTM `Tcc`.
 pub struct Tcc {
     inner: Arc<Inner>,
     gid: String,
@@ -628,7 +624,7 @@ pub struct Tcc {
 }
 
 impl Tcc {
-    /// Registers and invokes a TCC branch — the Go `CallBranch`:
+    /// Registers and invokes a TCC branch — the DTM `CallBranch`:
     /// register the confirm/cancel URLs with DTM, then POST the
     /// payload to `try_url` with the branch query parameters.
     pub async fn call_branch(
@@ -680,7 +676,7 @@ impl Tcc {
 }
 
 /// An XA branch handle handed to the
-/// [`DtmClient::xa_global_transaction`] closure — the Go `Xa`.
+/// [`DtmClient::xa_global_transaction`] closure — the DTM `Xa`.
 pub struct Xa {
     inner: Arc<Inner>,
     gid: String,
@@ -688,7 +684,7 @@ pub struct Xa {
 }
 
 impl Xa {
-    /// Invokes an XA branch — the Go `Xa.CallBranch`: POST the
+    /// Invokes an XA branch — the DTM `Xa.CallBranch`: POST the
     /// payload to `branch_url` with the branch query parameters and
     /// `phase2_url`.
     pub async fn call_branch(

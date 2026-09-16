@@ -1,5 +1,4 @@
-//! The Cassandra engine for the [`Repository`] contract — go-crud's
-//! `cassandra/` module (which is itself WIP upstream).
+//! The Cassandra engine for the [`Repository`] contract.
 //!
 //! Cassandra's query model and the contract's arbitrary-filter model are
 //! fundamentally at odds: CQL has no ad-hoc WHERE, no OR, no NOT

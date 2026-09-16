@@ -5,8 +5,8 @@ use std::sync::Arc;
 use crate::auditor::{AuditEntry, Auditor};
 use crate::viewer::Viewer;
 
-/// The cross-cutting request context — go-crud passes these through Go's
-/// `context.Context`; in Rust they are explicit fields.
+/// The cross-cutting request context, carried as explicit fields on every
+/// repository call.
 ///
 /// Cloning is cheap (the auditor sits behind an `Arc`).
 #[derive(Clone, Default)]

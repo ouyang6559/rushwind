@@ -22,8 +22,7 @@ async fn load_reads_and_reports_absent() {
         .expect("load must succeed");
     assert_eq!(absent, None, "an absent key reads as None");
 
-    // Seed through the raw HTTP API the same way the Go api.Client
-    // would.
+    // Seed through the raw HTTP API.
     let client = reqwest::Client::new();
     client
         .put(format!("{}/v1/kv/rushwind-test/cfg", addr()))

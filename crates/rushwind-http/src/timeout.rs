@@ -1,9 +1,9 @@
-//! The request-timeout middleware — the Go `timeout`.
+//! The request-timeout middleware.
 //!
 //! Bounds the whole downstream chain (handlers included) by a wall-clock
 //! budget. An exceeded budget drops the inner future and answers `504`
 //! with reason `DEADLINE_EXCEEDED` — the client sees the envelope, the
-//! handler is simply gone (the Go behavior: the request context
+//! handler is simply gone (the request context
 //! cancels).
 
 use std::time::Duration;

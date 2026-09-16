@@ -1,21 +1,20 @@
 //! Etcd adapter for the RushWind registry contract — registration and
-//! discovery, ported from `go-wind-plugins/registry/etcd`.
+//! discovery.
 //!
-//! Registration announces instances using the **extracted go-wind wire
+//! Registration announces instances using the **rush-wind wire
 //! contract**: key `{namespace}/{name}/{id}` (namespace defaults to
-//! [`DEFAULT_NAMESPACE`]), value = the go-`json.Marshal`-compatible
+//! [`DEFAULT_NAMESPACE`]), value = the wire
 //! instance JSON from [`rushwind_registry::registry_json`], lease-granted
 //! with a TTL (default 15 s) and kept alive by a self-healing background
-//! task that re-grants and re-puts on loss — mirroring the Go registrar's
-//! `heartBeat` goroutine.
+//! task that re-grants and re-puts on loss.
 //!
-//! Discovery is the Go `Discovery`/`watcher` pair:
+//! Discovery has two halves:
 //! [`Discovery::get_service`] reads a service's instance list through the
 //! KV API, and [`Discovery::watch`] establishes a prefix watch whose every
 //! response — including the establishment progress notification —
 //! triggers a full snapshot re-read. A stream that dies, is canceled
 //! server-side, or hits a compaction boundary is rebuilt after a
-//! one-second backoff, mirroring the Go watcher's `reWatch` path.
+//! one-second backoff.
 //!
 //! # Cancellation
 //!
@@ -30,8 +29,8 @@
 //!
 //! # Testing
 //!
-//! The pure parts (key layout, wire JSON) are golden-tested against Go
-//! output in `rushwind-registry`. The gRPC wrapper in this crate is
+//! The pure parts (key layout, wire JSON) are golden-tested
+//! in `rushwind-registry`. The gRPC wrapper in this crate is
 //! intentionally thin; live conformance tests exercise it against a real
 //! etcd via the `live` feature (no embedded etcd exists for CI).
 
@@ -67,8 +66,7 @@ struct Inner {
     tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
 }
 
-/// An etcd-backed registry: registration and discovery over one client,
-/// the port of the Go `registry.Registry` type.
+/// An etcd-backed registry: registration and discovery over one client.
 pub struct EtcdRegistry {
     inner: Arc<Inner>,
 }
@@ -150,7 +148,7 @@ impl Registrar for EtcdRegistry {
             };
 
             // The self-healing loop: refresh the lease; on any loss,
-            // re-grant and re-put (mirroring the Go registrar's heartBeat).
+            // re-grant and re-put.
             // The task owns its own client handle.
             let task_client = self.inner.client.lock().await.clone();
             let heal_key = key.clone();
@@ -260,9 +258,8 @@ impl Discovery for EtcdRegistry {
 
 /// The etcd-backed [`Watcher`]: a prefix watch whose every response —
 /// including the establishment progress notification — triggers a full
-/// snapshot re-read through the KV API, mirroring the Go watcher's
-/// `Next`/`getInstance` pair. A dead, canceled, or compacted stream is
-/// rebuilt after a one-second backoff, mirroring its `reWatch` path.
+/// snapshot re-read through the KV API. A dead, canceled, or compacted
+/// stream is rebuilt after a one-second backoff.
 struct EtcdWatcher {
     /// A private client handle, cloned at watch creation so snapshot
     /// reads never contend on the registry's client lock.
@@ -298,8 +295,7 @@ impl Watcher for EtcdWatcher {
             };
             if !healthy {
                 // The stream died, was canceled server-side, or hit a
-                // compaction boundary — the cases the Go watcher's channel
-                // closes on. Rebuild after the backoff, then re-read.
+                // compaction boundary. Rebuild after the backoff, then re-read.
                 self.stream = None;
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 let stream = open_watch(&mut self.client, &self.prefix).await?;
@@ -346,8 +342,7 @@ async fn grant_and_put(
 /// Reads the full instance list for `prefix` through the KV API, keeping
 /// only entries whose parsed name matches — the prefix over-matches
 /// sibling service names (`order` also covers `order-service`), so the
-/// parsed-name filter is load-bearing, exactly like the Go discovery's
-/// `GetService`.
+/// parsed-name filter is load-bearing.
 async fn read_instances(
     client: &mut etcd_client::Client,
     prefix: &str,
@@ -372,8 +367,8 @@ async fn read_instances(
 }
 
 /// Establishes the prefix watch on `prefix` and requests an immediate
-/// progress notification — the exact setup the Go watcher performs at
-/// creation, verifying stream liveness before the first snapshot read.
+/// progress notification, verifying stream liveness before the first
+/// snapshot read.
 async fn open_watch(
     client: &mut etcd_client::Client,
     prefix: &str,

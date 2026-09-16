@@ -1,25 +1,21 @@
-//! Distributed transaction contract for RushWind, extracted from the
-//! Go predecessor `go-wind-plugins/transaction`: the minimal surface
+//! Distributed transaction contract for RushWind: the minimal surface
 //! every transaction-manager engine shares, with the pattern
 //! operations (saga, tcc, msg, xa) left to the concrete engine types.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! The Go contract is a single interface, [`TransactionClient`],
+//! The contract is a single interface, [`TransactionClient`],
 //! holding only [`TransactionClient::close`] — pattern operations
 //! have incompatible signatures across engines and stay on the
-//! concrete clients, and the same holds here:
+//! concrete clients:
 //! `rushwind-transaction-dtm` exposes saga/tcc/msg/xa as inherent
-//! methods on its builder types. The Go plugin ships one engine
-//! (`dtm`, over the dtm-labs Go SDK); the Rust engine speaks DTM's
+//! methods on its builder types. The `dtm` engine speaks DTM's
 //! HTTP protocol directly over reqwest.
 //!
-//! Go's panic sites become typed errors: the DTM SDK panics when a
-//! TCC/XA transaction grows past 99 branches —
-//! [`TransactionError::TooManyBranches`] — and panics on payload
-//! marshal failure — [`TransactionError::Encode`]. (The SDK's other
-//! panic, a branch id past 20 characters, needs a nested root id
-//! the Go wrapper never constructs, so it has no Rust shape.)
+//! Failure modes that reference implementations panic on surface as
+//! typed errors: a TCC/XA transaction growing past 99 branches —
+//! [`TransactionError::TooManyBranches`] — and payload
+//! marshal failure — [`TransactionError::Encode`].
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -37,20 +33,16 @@ pub enum TransactionError {
     /// The DTM server rejected the operation — a non-success status
     /// or a body reporting FAILURE.
     Dtm(String),
-    /// A participating branch or endpoint reported FAILURE — the
-    /// Go `dtmcli.ErrFailure`.
+    /// A participating branch or endpoint reported FAILURE.
     Failure(String),
     /// A branch or endpoint reported ONGOING (or HTTP 425 Too
-    /// Early, the Go `StatusTooEarly`) — the Go `dtmcli.ErrOngoing`;
-    /// the operation's outcome is not yet decided.
+    /// Early) — the operation's outcome is not yet decided.
     Ongoing(String),
     /// The HTTP exchange itself failed (connect, timeout, reset).
     Request(String),
-    /// A payload did not serialize — the Go `MustMarshalString`
-    /// panic.
+    /// A payload did not serialize.
     Encode(String),
-    /// A TCC/XA transaction tried to register more than 99 branches
-    /// — the Go branch-id panic.
+    /// A TCC/XA transaction tried to register more than 99 branches.
     TooManyBranches,
 }
 
@@ -71,7 +63,7 @@ impl std::fmt::Display for TransactionError {
 
 impl std::error::Error for TransactionError {}
 
-/// The transaction-manager contract — the Go `transaction.Client`.
+/// The transaction-manager contract.
 /// The only universally shared operation is
 /// [`TransactionClient::close`]; pattern operations (saga, tcc, msg,
 /// xa) live on the concrete engine types. Engines must be callable

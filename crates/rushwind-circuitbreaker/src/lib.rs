@@ -1,5 +1,4 @@
-//! Circuit-breaker contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/circuitbreaker`: an algorithm-agnostic
+//! Circuit-breaker contract for RushWind: an algorithm-agnostic
 //! [`CircuitBreaker`] interface. Concrete implementations (Vegas,
 //! Hystrix, SRE, ...) live in `rushwind-circuitbreaker-*` crates and
 //! implement this trait so business code depends only on the contract.
@@ -23,8 +22,8 @@
 //! - `rushwind-circuitbreaker-sres` — Google-SRE probabilistic
 //!   acceptance.
 //!
-//! Sentinel is deferred: the Go engine adapts `sentinel-golang`, a
-//! Go-only SDK with no Rust equivalent.
+//! Sentinel is deferred: no maintained Rust SDK exists to build on, while
+//! build an engine on.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -35,7 +34,7 @@ use std::pin::Pin;
 /// Future type used across the circuit-breaker contract.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The internal state of a circuit breaker — the Go `State`.
+/// The internal state of a circuit breaker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum State {
     /// The circuit is healthy; all requests flow. The default state.
@@ -49,7 +48,7 @@ pub enum State {
 }
 
 impl State {
-    /// The readable string — the Go `State.String`.
+    /// The readable string form of a state.
     pub fn as_str(&self) -> &'static str {
         match self {
             State::Closed => "closed",
@@ -63,8 +62,7 @@ impl State {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum CircuitError {
-    /// The circuit is open — the request was rejected. The Go
-    /// `ErrCircuitOpen`.
+    /// The circuit is open — the request was rejected.
     Open,
     /// The engine could not complete the operation.
     Failed(String),
@@ -81,7 +79,7 @@ impl std::fmt::Display for CircuitError {
 
 impl std::error::Error for CircuitError {}
 
-/// The core circuit-breaking contract — the Go `CircuitBreaker`.
+/// The core circuit-breaking contract.
 /// Engines must be callable through shared references (`&self`) and
 /// safe for concurrent use.
 pub trait CircuitBreaker: Send + Sync {
@@ -98,7 +96,7 @@ pub trait CircuitBreaker: Send + Sync {
     /// after a successful [`CircuitBreaker::allow`].
     fn mark_failure(&self);
 
-    /// The current circuit-breaker state — the Go `State`.
+    /// The current circuit-breaker state.
     fn state(&self) -> State;
 
     /// Releases any resources held by the breaker. A closed breaker
@@ -116,7 +114,7 @@ pub enum ExecuteError<E> {
     Inner(E),
 }
 
-/// Convenience wrapper — the Go `Execute`: allow, run the closure,
+/// Convenience wrapper: allow, run the closure,
 /// then mark success/failure from its result. When the circuit rejects,
 /// the closure never runs and [`ExecuteError::CircuitOpen`] is
 /// returned.

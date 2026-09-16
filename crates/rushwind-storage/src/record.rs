@@ -9,8 +9,7 @@ use crate::value::Value;
 ///
 /// Repositories speak in [`Record`]s rather than concrete structs: the same
 /// row shape flows through every engine, and typed callers translate at
-/// their own boundary (a derive-macro layer can do this mechanically later;
-/// go-crud gets the equivalent for free from proto reflection).
+/// their own boundary (a derive-macro layer can do this mechanically later)..
 ///
 /// Column iteration is deterministic (`BTreeMap` ordering) so tests and
 /// audits are reproducible.

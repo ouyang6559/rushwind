@@ -1,5 +1,4 @@
-//! Metrics-reporting contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/metrics`.
+//! Metrics-reporting contract for RushWind.
 //!
 //! A minimal, engine-agnostic surface over the three core metric types:
 //!
@@ -14,16 +13,17 @@
 //! crates (`rushwind-metrics-*`), one backend per crate, the
 //! registry/storage pattern.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `labels map[string]string`, iteration order random | `&[(&str, &str)]` pairs; engines canonicalize by sorting, so call-site order never changes the series identity |
-//! | `ctx context.Context` on every call | no context — recording is synchronous and fire-and-forget on every engine |
-//! | `Closer` / `Close()` for exporter flush | `Drop` where an engine holds flush machinery |
-//! | registration/send errors are swallowed | same, by contract: recording never fails the caller, engines drop and continue |
+//! - labels are `&[(&str, &str)]` pairs; engines canonicalize by sorting,
+//!   so call-site order never changes the series identity
+//! - no request context — recording is synchronous and fire-and-forget
+//!   on every engine
+//! - shutdown rides `Drop` where an engine holds flush machinery
+//! - recording never fails the caller: engines drop and continue by
+//!   contract
 //!
-//! # Engine matrix (ported)
+//! # Engine matrix
 //!
 //! | Crate | Backend |
 //! |:---|:---|

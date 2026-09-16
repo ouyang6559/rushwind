@@ -2,13 +2,13 @@
 //! service container. Compile-gated behind the `live` feature; the
 //! server address comes from `REGISTRY_EUREKA_ADDRESS`. These tests
 //! pin the interoperability contract where it matters most — a real
-//! eureka serving the same application view a Go-side consumer would
-//! see.
+//! eureka serving the same application view any external consumer
+//! would see.
 //!
 //! Two eureka realities shape the tests: the server caches its
 //! responses for ~30 s, and this adapter's cache exists only for
 //! watched applications (an unwatched `get_service` always falls
-//! through to the Go original's never-unwrapped single-application
+//! through to the never-unwrapped single-application
 //! fetch and sees nothing — reproduced here). So the round trip goes
 //! through a watcher, and the polls allow the cache periods to elapse.
 
@@ -35,7 +35,7 @@ fn sample(port: u16) -> Registration {
     })
 }
 
-/// The round trip, through a watcher as the Go discovery shape
+/// The round trip, through a watcher as the discovery shape
 /// requires: register, wait for the refresh loop to land the instance
 /// in the watched cache (get_service then serves it too), then
 /// deregister and wait for the removal.

@@ -1,28 +1,25 @@
-//! RabbitMQ engine for the RushWind broker contract — the Go
-//! `go-wind-plugins/broker/rabbitmq` ported onto `lapin`.
+//! RabbitMQ engine for the RushWind broker, over `lapin`.
 //!
 //! # The wire behavior
 //!
-//! Publishes go to the **`amq.topic` topic exchange** (the Go
-//! `DefaultExchange`, durable and pre-existing on every broker) with
+//! Publishes go to the **`amq.topic` topic exchange** (durable and
+//! pre-existing on every broker) with
 //! the topic as the routing key; the message headers ride the AMQP
 //! `headers` table — RabbitMQ, unlike MQTT/Redis/NATS, does carry
 //! them. Each subscription declares an anonymous, exclusive,
 //! auto-delete queue bound to the exchange with the topic as the
-//! routing key, and consumes it with automatic acknowledgment —
-//! the Go `Consume` path.
+//! routing key, and consumes it with automatic acknowledgment.
 //!
 //! Topic routing follows AMQP topic-match rules (`*` one word, `#`
 //! zero or more words, `.` separators).
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
-//! - One exchange (`amq.topic`); the Go per-call exchange selection
-//!   and custom exchange registration are not ported.
-//! - Deliveries auto-acknowledge; the event ack is a no-op. The Go
-//!   engine consumes with auto-ack too.
-//! - The delivery mode (persistent/transient) is not ported — the Go
-//!   engine leaves it unset as well, which AMQP treats as transient.
+//! - One exchange (`amq.topic`); per-call exchange selection
+//!   and custom exchange registration are not available.
+//! - Deliveries auto-acknowledge; the event ack is a no-op.
+//! - The delivery mode (persistent/transient) is not configurable —
+//!   AMQP's unset default treats deliveries as transient.
 //!
 //! # Testing
 //!
@@ -44,8 +41,7 @@ use std::future::Future;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-/// The exchange every publish and bind goes through — the Go
-/// `DefaultExchange`.
+/// The exchange every publish and bind goes through.
 const DEFAULT_EXCHANGE: &str = "amq.topic";
 
 struct Inner {
@@ -167,7 +163,7 @@ impl Broker for RabbitmqBroker {
                 .await
                 .map_err(|e| BrokerError::Failed(format!("rabbitmq channel: {e}")))?;
 
-            // The Go Consume path: an anonymous, exclusive,
+            // The consume path: an anonymous, exclusive,
             // auto-delete queue bound to the exchange with the topic
             // as the routing key, consumed with automatic acks.
             let queue = channel

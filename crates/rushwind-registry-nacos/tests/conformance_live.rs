@@ -2,12 +2,12 @@
 //! service container. Compile-gated behind the `live` feature; the
 //! server address comes from `REGISTRY_NACOS_ADDRESS`. These tests pin
 //! the interoperability contract where it matters most — a real nacos
-//! serving the same instance view a Go-side consumer would see.
+//! serving the same instance view any external consumer would see.
 //!
-//! The Go adapter registers under `{name}.{scheme}` but queries under
-//! the bare `{name}` — an asymmetry intrinsic to the Go code, so its
-//! own registrations are invisible to its own discovery. The queries
-//! here target the suffixed service name, the one that actually holds
+//! Registration targets `{name}.{scheme}` but a bare-name query under
+//! `{name}` finds nothing — an asymmetry of the underlying service
+//! model, so discovery here
+//! targets the suffixed service name, the one that actually holds
 //! the registered instances.
 
 #![cfg(feature = "live")]
@@ -92,7 +92,7 @@ async fn registered_instance_round_trips_then_leaves() {
 /// The reactive path: the SDK subscription's pushes deliver fresh
 /// snapshots — the addition when the instance registers, the removal
 /// when it deregisters. Push-channel establishment is bimodal **per
-/// connection** on this server (same protocol as the Go SDK), and the
+/// connection** on this server, and the
 /// server's instance visibility lags registration by seconds, so each
 /// phase retries with a fresh subscription on a fresh connection until
 /// a snapshot carrying the change arrives. The registration itself

@@ -1,5 +1,4 @@
-//! Soft-delete decorator for the [`Repository`] contract — the portable
-//! spelling of go-crud's GORM-module soft deletes, engine-agnostic because
+//! Soft-delete decorator for the [`Repository`] contract, engine-agnostic because
 //! it is a decorator: it wraps *any* repository (in-memory, SeaORM,
 //! MongoDB, …) and needs nothing from the engine but a nullable timestamp
 //! column.

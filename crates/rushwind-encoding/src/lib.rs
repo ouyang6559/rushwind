@@ -1,12 +1,10 @@
-//! Codec contract for the RushWind encoding domain — the Go
-//! `go-wind-plugins/encoding` package ported.
+//! Codec contract for the RushWind encoding domain.
 //!
-//! The Go core is tiny and this is too: a [`Codec`] is anything that
+//! The core is tiny: a [`Codec`] is anything that
 //! can marshal a serde-serializable value to bytes and unmarshal bytes
 //! back, plus a name. A process-wide registry maps names
 //! (case-insensitively) to codecs, so an application picks wire formats
-//! by string — the same shape the Go ecosystem composes transports and
-//! brokers around.
+//! by string.
 //!
 //! The type-erased surface rides on `erased-serde`: `marshal` takes a
 //! `&dyn` erased-serialize and `unmarshal` hands back an erased
@@ -25,8 +23,8 @@
 //! ```
 //!
 //! Engines live in sibling crates, one per format
-//! (`rushwind-encoding-json`, `rushwind-encoding-msgpack`, …),
-//! mirroring the Go module-per-format layout. Each exposes a codec
+//! (`rushwind-encoding-json`, `rushwind-encoding-msgpack`, …).
+//! Each exposes a codec
 //! constructor and a `register()` function that installs it in the
 //! registry.
 //!
@@ -45,32 +43,31 @@
 //! # assert_eq!(round.seq, 1);
 //! ```
 //!
-//! Semantics match the Go registry exactly: names are lowercased before
+//! Registry semantics: names are lowercased before
 //! lookup, a later registration with the same name overwrites the
 //! earlier one, and unknown or empty names return `None`.
 //!
-//! # Divergences from the Go package
+//! # Design notes
 //!
-//! - **No `init()` self-registration.** Go's format subpackages
-//!   register themselves through side effects at import time; Rust has
-//!   no lifecycle hook, so each engine exposes an explicit `register()`
-//!   the application calls once at startup. Registry semantics are
-//!   otherwise identical.
-//! - **`register_codec` returns `Err`** on an empty codec name where
-//!   the Go version panics.
-//! - **gob, thrift, avro and flatbuffers have no engines.** gob is a
-//!   Go-only wire format with no cross-language meaning; thrift, avro
-//!   and flatbuffers are schema/interface-driven formats whose Go
-//!   codecs lean on runtime type assertions that have no Rust
+//! - **No `init()` self-registration.** Rust has
+//!   no import-time lifecycle hook, so each engine exposes an explicit
+//!   `register()` the application calls once at startup.
+//! - **`register_codec` returns `Err`** on an empty codec name instead
+//!   of panicking.
+//! - **gob, thrift, avro and flatbuffers have no engines.** gob has no
+//!   cross-language meaning; thrift, avro
+//!   and flatbuffers are schema/interface-driven formats whose codecs
+//!   lean on runtime type assertions that have no Rust
 //!   equivalent. They can join as engines later if a need shows up.
-//! - **proto is not a registry member.** The Go codec type-asserts
-//!   `v.(proto.Message)` at runtime; Rust must bind `prost::Message`
-//!   at compile time, so binary proto lives in `rushwind-encoding-proto`
+//! - **proto is not a registry member.** A registry codec that
+//!   type-asserts `v.(proto.Message)` at runtime has no object-safe
+//!   Rust twin: `prost::Message` is bound at compile time, so binary
+//!   proto lives in `rushwind-encoding-proto`
 //!   as a typed sidecar rather than behind this object-safe trait.
-//! - **No MIME/content-type mapping.** As in Go, that belongs to an
+//! - **No MIME/content-type mapping.** That belongs to an
 //!   HTTP middleware layer, not the encoding core.
 //! - **No broker `Marshal`/`Unmarshal` fallback** (bytes/string
-//!   pass-through with a gob default). RushWind's broker contract
+//!   pass-through with a built-in default codec). RushWind's broker contract
 //!   carries bytes on the wire and leaves encoding to the edges.
 
 #![forbid(unsafe_code)]
@@ -105,15 +102,14 @@ impl fmt::Display for EncodingError {
 impl std::error::Error for EncodingError {}
 
 /// The contract every concrete codec (json, msgpack, yaml, …)
-/// satisfies — the Go `encoding.Codec` interface, with serde's
-/// `Serialize`/`Deserialize` standing in for `any`.
+/// satisfies, with serde's
+/// `Serialize`/`Deserialize` as the value model.
 ///
 /// Implementations live in the per-format engine crates; the trait is
 /// object-safe so codecs can be traded through the registry as
 /// `Arc<dyn Codec>`.
 pub trait Codec: Send + Sync {
-    /// The codec's registry name (e.g. `"json"`), matching the Go
-    /// per-format `Name` constant.
+    /// The codec's registry name (e.g. `"json"`).
     fn name(&self) -> &'static str;
 
     /// Encodes a serde-serializable value into bytes.
@@ -142,8 +138,7 @@ fn codecs() -> &'static RwLock<HashMap<String, Arc<dyn Codec>>> {
 
 /// Installs a codec in the registry under its [`Codec::name`]
 /// (lowercased). A later registration with the same name overwrites the
-/// earlier one. An empty name is rejected — the Go registry panics
-/// there; this returns an error instead.
+/// earlier one. An empty name is rejected with an error.
 pub fn register_codec(codec: impl Codec + 'static) -> Result<(), EncodingError> {
     let name = codec.name().to_lowercase();
     if name.is_empty() {
@@ -157,8 +152,7 @@ pub fn register_codec(codec: impl Codec + 'static) -> Result<(), EncodingError> 
 }
 
 /// Looks up the codec registered under `name`. Lookup is
-/// case-insensitive; unknown or empty names return `None` — the Go
-/// `GetCodec` behavior.
+/// case-insensitive; unknown or empty names return `None`.
 pub fn get_codec(name: &str) -> Option<Arc<dyn Codec>> {
     if name.is_empty() {
         return None;

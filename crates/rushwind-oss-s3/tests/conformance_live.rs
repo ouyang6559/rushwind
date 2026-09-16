@@ -87,8 +87,7 @@ async fn put_carries_content_type() {
         .expect("delete must succeed");
 }
 
-/// Empty keys and empty bodies are rejected up front — the Go
-/// sentinels as typed errors.
+/// Empty keys and empty bodies are rejected up front as typed errors.
 #[tokio::test]
 async fn validation_errors() {
     let storage = S3Storage::new(config()).expect("storage builds");
@@ -105,8 +104,8 @@ async fn validation_errors() {
         "empty bodies must fail with EmptyObjectBody"
     );
 
-    // The engine validates the bucket eagerly — the Go NewStorage's
-    // missing-config guard folded into a Result.
+    // The engine validates the bucket eagerly, folding the
+    // missing-config guard into a Result.
     let result = S3Storage::new(StorageConfig {
         bucket: String::new(),
         ..config()

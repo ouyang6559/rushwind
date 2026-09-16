@@ -45,7 +45,7 @@
 | 阶段 3 | 全部 `Server::stop` 并发执行，每个独立包 `tokio::time::timeout`；panic 被 `catch_unwind` 捕获转为记录 | 每服务器独立，同上 |
 | 阶段 4 | after 钩子，同阶段 2 | 同上 |
 
-**预算规则**：任何阶段的截止时刻都在该阶段开始时才计算，绝不复用更早的时刻。这条规则来自 Go 前作的两个已修 bug（停机上下文从运行上下文派生导致超时形同虚设；钩子超时在运行开始时创建导致正常运行期间耗尽）。
+**预算规则**：任何阶段的截止时刻都在该阶段开始时才计算，绝不复用更早的时刻。复用更早时刻的预算有两类经典失效：停机预算从运行起点派生会让超时形同虚设；钩子超时在运行开始时创建会在正常运行期间就被耗尽。
 
 **错误聚合**：`Cancelled`（协作退出）在聚合时被过滤；其余的启动侧首个错误优先，否则停止侧首个错误。panic 与超时分别记录为 `Panicked` / `Timeout`。
 
@@ -89,15 +89,15 @@
 
 ## 存储契约：动态协议替代运行时反射
 
-`rushwind-storage` 是 go-crud「一套泛型 Repository 驾驭 8 种引擎」的 Rust 表达。Go 靠 proto 结构体 + 反射获得动态性；Rust 没有运行时反射，动态性被显式化为一个小协议面：
+`rushwind-storage` 的核心命题是「一套泛型 Repository 驾驭多种引擎」。动态性通常靠运行时反射获得；Rust 没有运行时反射，动态性被显式化为一个小协议面：
 
-| Go（go-crud） | Rust（rushwind-storage） | 理由 |
-|:---|:---|:---|
-| proto 反射读写字段 | `Schema`（表/列/类型）+ `Record`（BTreeMap 行） | 引擎从 Schema 派生自身机制；字段遍历确定性（测试与审计可复现） |
-| `context.Context` 携带 viewer | `QueryCtx` 按值传递（`Viewer` + `Arc<dyn Auditor>`） | clone 便宜（Arc）；单引用 + owned ctx 让装箱 future 的生命周期与传输契约同样简单 |
-| `FilterExpr`（一层 AND/OR） | `FilterExpr` 递归树（`All`/`Any` 任意嵌套） | 内存引擎逐条求值即规范语义，SQL 引擎翻译为 `sea_query::Condition`，套件钉死两者一致 |
-| 三种分页 proto | `Paging::{Page, Offset, Token}` | Token 游标 = 主键升序流（URL-safe base64 编码的末位 id）；与自定义排序组合是 `InvalidQuery` 而非静默忽略 |
-| GORM 软删除 / Ent 钩子 | 刻意不入 P0 契约 | 软删除是引擎侧约定（`deleted_at` + 默认过滤），硬进契约会绑架无此概念的引擎 |
+| 决策 | 理由 |
+|:---|:---|
+| `Schema`（表/列/类型）+ `Record`（BTreeMap 行）承载动态字段 | 引擎从 Schema 派生自身机制；字段遍历确定性（测试与审计可复现） |
+| `QueryCtx` 按值传递（`Viewer` + `Arc<dyn Auditor>`） | clone 便宜（Arc）；单引用 + owned ctx 让装箱 future 的生命周期与传输契约同样简单 |
+| `FilterExpr` 递归树（`All`/`Any` 任意嵌套） | 内存引擎逐条求值即规范语义，SQL 引擎翻译为 `sea_query::Condition`，套件钉死两者一致 |
+| 三种分页表达为 `Paging::{Page, Offset, Token}` | Token 游标 = 主键升序流（URL-safe base64 编码的末位 id）；与自定义排序组合是 `InvalidQuery` 而非静默忽略 |
+| 软删除与生命周期钩子刻意不入 P0 契约 | 软删除是引擎侧约定（`deleted_at` + 默认过滤），硬进契约会绑架无此概念的引擎 |
 
 三条硬性义务（套件强制）：
 
@@ -107,7 +107,7 @@
 
 ### 语法层：proto 契约是唯一事实来源
 
-go-crud 的两个精髓在此落地。其一，**查询语法的操作符分类学**（`EQ`/`LIKE`/`CONTAINS`/`GTE`/`IS_NULL`……29 个，血统直追 Django ORM 的 field lookups）；其二，**契约由 proto 定义**——`proto/rushwind/storage/v1/query.proto` 是线格式的唯一事实来源，`FilterExpr`/`FilterCondition`/`PaginationRequest`/`Sorting`/`FieldMask` 与 go-crud 的 `api/` 同形，Go 与 Rust 服务交换字节一致的消息。
+两个设计支柱在此落地。其一，**查询语法的操作符分类学**（`EQ`/`LIKE`/`CONTAINS`/`GTE`/`IS_NULL`……29 个，血统直追 Django ORM 的 field lookups）；其二，**契约由 proto 定义**——`proto/rushwind/storage/v1/query.proto` 是线格式的唯一事实来源，`FilterExpr`/`FilterCondition`/`PaginationRequest`/`Sorting`/`FieldMask` 均定义于此，任何语言的服务交换字节一致的消息。
 
 `rushwind-storage-proto` 从这份 proto **生成**两种产物（prost 出类型、pbjson 出 protojson serde），生成物永不手写，线格式因此不可能漂移。`wire` 模块把生成类型翻译成契约类型，29 操作符映射规则：
 
@@ -125,7 +125,7 @@ go-crud 的两个精髓在此落地。其一，**查询语法的操作符分类�
 
 三种分页经 `PaginationRequest` oneof 进入：`NoPaging` 映射为 `Offset{0, MAX_LIMIT}`（契约允许的最大窗口）。protojson 之外，契约 crate 还内建 **AIP 文本子集**解析器（`FilterExpr::from_aip`，零依赖手写）：`name = "bolt" AND (age >= 10 OR role IN ("a","b"))`，AND 优先于 OR、并列即隐式 AND、`NOT` 翻转有精确补运算的操作符——与 protojson 两条路汇入同一棵 [`FilterExpr`] 树，端到端测试钉死两条路在引擎上的结果一致。
 
-枚举值的 protojson 形式是 proto 成员名（`"IS_NULL"`，不是驼峰）；FieldMask 用 go-crud 自己的 `{"paths":[...]}` 消息，而非 well-known 类型的逗号串。
+枚举值的 protojson 形式是 proto 成员名（`"IS_NULL"`，不是驼峰）；FieldMask 用 `{"paths":[...]}` 消息形状，而非 well-known 类型的逗号串。
 
 引擎矩阵按「SQL 全家 + 文档库」铺开：
 
@@ -137,27 +137,27 @@ go-crud 的两个精髓在此落地。其一，**查询语法的操作符分类�
 
 SQL 三方言的语句渲染由快照测试逐字钉死（占位符风格 `$n` vs `?`、LIMIT/OFFSET 绑定、ILIKE 折叠），live 容器套件验证的是连接、事务与真实服务器的方言行为——两层互相兜底。MongoDB 的 `LIKE` 族编译为转义加锚定的正则（SQL 通配符语义），元字符绝不逃逸成通配；生成主键用 `max(pk)+1`（文档库没有 rowid 别名），`batch_create` 的严格原子性需要副本集事务，单机部署下是单命令尽力语义——两处都在引擎文档里言明。内存引擎的存在不是多余的样例——它让「同一过滤器树、多引擎、逐行一致」成为套件可执行的断言，而非文档承诺。
 
-横切层以装饰器表达：`rushwind-storage-cache` 把 go-crud 的 Cache-Aside + SingleFlight 包成任意 `Repository` 之上的透明层。两条租户攸关的设计决策——**缓存键含 viewer 作用域**（`own(1)` 与 `own(2)` 永不共享条目，缓存无法跨租户泄漏），以及**失效即递增 per-key generation**（写事务落地前已出发的加载不得用旧行回填缓存）——各有一条行为测试钉死；装饰器本身还须整套通过 27 例一致性套件，证明其透明性。
+横切层以装饰器表达：`rushwind-storage-cache` 把 Cache-Aside + SingleFlight 模式包成任意 `Repository` 之上的透明层。两条租户攸关的设计决策——**缓存键含 viewer 作用域**（`own(1)` 与 `own(2)` 永不共享条目，缓存无法跨租户泄漏），以及**失效即递增 per-key generation**（写事务落地前已出发的加载不得用旧行回填缓存）——各有一条行为测试钉死；装饰器本身还须整套通过 27 例一致性套件，证明其透明性。
 
-同一手法延伸到软删除：`rushwind-storage-soft-delete` 把 go-crud GORM 模块的软删语义做成引擎无关的装饰器——表声明一个 `deleted_at` 整数列，`delete` 变为墓碑写入，所有读路径（get/list/count/update 目标）过滤墓碑，`restore`/`purge`/`list_deleted` 显式 opting out；`upsert` 写入可见世界（墓碑 id 以新数据复活）。审计话语权归装饰器：delete 审计为 `Delete`（尽管底层是 `Update`），落库写走无审计 sink 的静默上下文。装饰器本身过全套 27 例透明性套件 + 9 例行为测试。
+同一手法延伸到软删除：`rushwind-storage-soft-delete` 把经典 ORM 的软删语义做成引擎无关的装饰器——表声明一个 `deleted_at` 整数列，`delete` 变为墓碑写入，所有读路径（get/list/count/update 目标）过滤墓碑，`restore`/`purge`/`list_deleted` 显式 opting out；`upsert` 写入可见世界（墓碑 id 以新数据复活）。审计话语权归装饰器：delete 审计为 `Delete`（尽管底层是 `Update`），落库写走无审计 sink 的静默上下文。装饰器本身过全套 27 例透明性套件 + 9 例行为测试。
 
-DTO↔Entity 映射（对位 go-utils/mapper）落在 `rushwind-storage-macros`：契约 crate 定义 `ToRecord`/`FromRecord` 一对 trait，derive 宏为受支持的标量模型（`String`/`i64`/`f64`/`bool` 及其 `Option`）生成实现——`None` ↔ `NULL`，缺失或错型字段即 `InvalidQuery`。Go 那边靠反射的映射，这里在编译期完成。
+DTO↔Entity 映射落在 `rushwind-storage-macros`：契约 crate 定义 `ToRecord`/`FromRecord` 一对 trait，derive 宏为受支持的标量模型（`String`/`i64`/`f64`/`bool` 及其 `Option`）生成实现——`None` ↔ `NULL`，缺失或错型字段即 `InvalidQuery`。映射在编译期完成，全程无需运行时反射。
 
-最后两块积木各归其位。树形查询（对位 go-crud Ent 的 tree）不进契约、也不进引擎——`rushwind-storage-tree` 把整棵树的词汇表（`children`/`roots`/`ancestors`/`subtree`/`is_ancestor`）表达为契约级查询的组合：约定一个 `parent_id` 整数列，children/roots 是过滤列表，subtree 是逐层广度扫描，环损坏报 `InvalidQuery` 而非死循环，悬空父 id 如根截止。代价是深子树每层一次 list——SQL 引擎日后可用递归 CTE 出专用快路径，而任何引擎（含装饰器栈）第一天就能用。可观测性同理不绑栈：`rushwind-storage-observe` 只发 `tracing` span（`rushwind.storage`，带 `table`/`op`/`outcome`），导出到 OpenTelemetry 是 subscriber 侧（tracing-opentelemetry）的选型——观测栈是用户的底板，RushWind 只递积木。
+最后两块积木各归其位。树形查询不进契约、也不进引擎——`rushwind-storage-tree` 把整棵树的词汇表（`children`/`roots`/`ancestors`/`subtree`/`is_ancestor`）表达为契约级查询的组合：约定一个 `parent_id` 整数列，children/roots 是过滤列表，subtree 是逐层广度扫描，环损坏报 `InvalidQuery` 而非死循环，悬空父 id 如根截止。代价是深子树每层一次 list——SQL 引擎日后可用递归 CTE 出专用快路径，而任何引擎（含装饰器栈）第一天就能用。可观测性同理不绑栈：`rushwind-storage-observe` 只发 `tracing` span（`rushwind.storage`，带 `table`/`op`/`outcome`），导出到 OpenTelemetry 是 subscriber 侧（tracing-opentelemetry）的选型——观测栈是用户的底板，RushWind 只递积木。
 
-最后一块积木把整条线接到线上：`rushwind-storage-axum` 把任意 `Repository` 挂成 CRUD 路由（GET/POST/PATCH/PUT/DELETE），列表查询的两种线上语法在 HTTP 边界双入口——`?q={protojson}` 原样收下 Go 客户端的请求文档，散参数则面向临时调用方（`filter` 走 AIP 文本、`sort=field:dir`、`fields` 掩码、三种分页参数）。写路径的 JSON body 经 schema 校验（未知列、类型错位即 400），错误taxonomy映射为状态码（NotFound→404、InvalidQuery→400、Conflict→409、Unsupported→501）。租户在边界收口：`with_viewer` 把请求头解析为 `Viewer`，作用域强制仍然由引擎在每次调用时执行——HTTP 层只负责把身份变成作用域，从不越权放行。
+最后一块积木把整条线接到线上：`rushwind-storage-axum` 把任意 `Repository` 挂成 CRUD 路由（GET/POST/PATCH/PUT/DELETE），列表查询的两种线上语法在 HTTP 边界双入口——`?q={protojson}` 原样收下 protojson 请求文档，散参数则面向临时调用方（`filter` 走 AIP 文本、`sort=field:dir`、`fields` 掩码、三种分页参数）。写路径的 JSON body 经 schema 校验（未知列、类型错位即 400），错误taxonomy映射为状态码（NotFound→404、InvalidQuery→400、Conflict→409、Unsupported→501）。租户在边界收口：`with_viewer` 把请求头解析为 `Viewer`，作用域强制仍然由引擎在每次调用时执行——HTTP 层只负责把身份变成作用域，从不越权放行。
 
-## 与 go-wind 的语义差异
+## 生命周期设计决策
 
-| Go（go-wind） | Rust（RushWind） | 理由 |
-|:---|:---|:---|
-| `context.Context` 贯穿所有签名 | `StopSignal` 单独传参，超时由编排器施加、服务器不可见预算 | Rust 无 ctx 对应物；预算是编排器的职责，服务器只需响应信号 |
-| `errgroup` + `go` 例程 | `FuturesUnordered`，借用 future，无 spawn | 见分发模型一节 |
-| `recover()` 兜底 | `catch_unwind` + `Panicked` 记录 | panic 语义显式化、可测试 |
-| `eg.Wait()` 无界等待退出 | 排水有截止，悬挂 future 被 drop | 对不合作服务器有硬边界 |
-| 钩子返回错误记日志 | 钩子结果一律丢弃 | 无日志门面；且失败钩子绝不能阻塞后续清理（语义取自 Go 版的"记录但继续"并加强） |
-| 信号集含 SIGQUIT | SIGTERM + SIGINT（Unix），Ctrl+C（Windows） | SIGQUIT 在现代部署中语义是 core dump，不适合优雅停机 |
-| `Done()`/`Err()` 经 channel + 数据竞争窗口 | `watch` 通道关闭 + `OnceLock`，发布在关闭前完成 | 发布/观察之间有明确的先行发生关系 |
+| 决策 | 理由 |
+|:---|:---|
+| `StopSignal` 单独传参，超时由编排器施加、服务器不可见预算 | 服务器只需响应信号，预算是编排器的职责 |
+| 并发推进用 `FuturesUnordered`，借用 future，无 spawn | 见分发模型一节 |
+| `catch_unwind` 在服务器边界兜底 panic，记为 `Panicked` | panic 语义显式化、可测试 |
+| 排水有截止，悬挂 future 被 drop | 对不合作服务器有硬边界 |
+| 钩子结果一律丢弃 | 无日志门面；失败钩子绝不能阻塞后续清理——"记录但继续"在此加强为"丢弃且继续" |
+| 信号集为 SIGTERM + SIGINT（Unix），Ctrl+C（Windows） | SIGQUIT 在现代部署中语义是 core dump，不适合优雅停机 |
+| 终局经 `watch` 通道关闭 + `OnceLock` 发布，发布在关闭前完成 | 发布/观察之间有明确的先行发生关系，无数据竞争窗口 |
 
 ## 一致性套件清单
 

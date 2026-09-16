@@ -1,18 +1,18 @@
 //! ZooKeeper adapter for the RushWind registry contract — registration
-//! and discovery, ported from `go-wind-plugins/registry/zookeeper`.
+//! and discovery.
 //!
 //! # The wire contract
 //!
 //! Identical to the etcd half's: the service-name and instance znodes
-//! live at the go-wind layouts [`service_prefix`] and
+//! live at the rush-wind layouts [`service_prefix`] and
 //! [`rushwind_registry::registry_key`] under the namespace (default
-//! [`DEFAULT_NAMESPACE`]), and the instance znode holds the go
-//! `json.Marshal(wind.Instance)` bytes from
+//! [`DEFAULT_NAMESPACE`]), and the instance znode holds the wire
+//! instance bytes from
 //! [`rushwind_registry::registry_json`]. Registration creates the two
 //! persistent parent nodes and the **ephemeral** instance node; a
 //! keeper task watches for session re-establishment and re-creates the
-//! ephemeral node after a session flap — the Go `reRegister` loop,
-//! event-driven instead of polled.
+//! ephemeral node after a session flap — event-driven instead of
+//! polled.
 //!
 //! # Discovery
 //!
@@ -20,15 +20,14 @@
 //! parses each instance znode. [`Discovery::watch`] arms a child watch
 //! on the service node — falling back to an exists watch while the
 //! node is absent — re-arming after every firing; each firing delivers
-//! a fresh full snapshot, the Go watcher's shape.
+//! a fresh full snapshot.
 //!
-//! # Divergences from the Go adapter
+//! # Behavior notes
 //!
 //! - The session-restoration keeper dies when its registration handle
-//!   drops; the Go goroutine leaks forever and can resurrect a
-//!   deregistered service after a session flap.
-//! - Deregister aborts the keeper alongside deleting the node; the Go
-//!   version only deletes.
+//!   drops, so it cannot resurrect a deregistered service after a
+//!   session flap.
+//! - Deregister aborts the keeper alongside deleting the node.
 //!
 //! # Cancellation
 //!
@@ -63,8 +62,7 @@ use zookeeper_async::ZooKeeper;
 struct Inner {
     zk: Arc<ZooKeeper>,
     namespace: String,
-    /// The optional digest ACL credentials, mirroring the Go
-    /// `WithDigestACL` option.
+    /// The optional digest ACL credentials for node creation.
     digest: Option<(String, String)>,
     /// Live keeper tasks per instance node.
     tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
@@ -147,7 +145,7 @@ impl Registrar for ZookeeperRegistry {
             let value = registry_json(&registration).into_bytes();
 
             // The persistent namespace and service nodes, then the
-            // ephemeral instance node — the Go ensureName sequence.
+            // ephemeral instance node, in that order.
             ensure_name(
                 &self.inner.zk,
                 &self.inner.namespace,
@@ -192,7 +190,7 @@ impl Registrar for ZookeeperRegistry {
             let keeper_data = value;
             let task = tokio::spawn(async move {
                 while keeper_rx.recv().await.is_some() {
-                    // The Go keeper dies on the first failed re-create.
+                    // The keeper dies on the first failed re-create.
                     if ensure_name(&zk, &keeper_path, &keeper_data, true, &digest)
                         .await
                         .is_err()
@@ -255,7 +253,7 @@ impl Discovery for ZookeeperRegistry {
     ) -> BoxFuture<'a, Result<Vec<Instance>, RegistryError>> {
         Box::pin(async move {
             let prefix = service_prefix(&self.inner.namespace, service_name);
-            // The Go GetService reads without a name filter: children
+            // Reads without a name filter: children
             // of the service node are its instances by construction.
             read_instances(&self.inner.zk, &prefix, service_name, false).await
         })
@@ -270,8 +268,8 @@ impl Discovery for ZookeeperRegistry {
 
             // The re-arm loop: children watch on the service node,
             // exists watch while it is absent — each firing is
-            // forwarded to the watcher and the watch re-arms, the Go
-            // watcher goroutine's shape. The loop dies when the
+            // forwarded to the watcher and the watch re-arms. The loop
+            // dies when the
             // watcher's channel is gone.
             let (loop_tx, mut loop_rx) = mpsc::unbounded_channel::<zookeeper_async::WatchedEvent>();
             let (signal_tx, signal_rx) = mpsc::unbounded_channel::<WatchSignal>();
@@ -340,8 +338,7 @@ impl Discovery for ZookeeperRegistry {
 /// The ZooKeeper-backed [`Watcher`]: a channel fed by the re-arm loop.
 /// The first [`Watcher::next`] call is the establishment snapshot;
 /// subsequent calls block on the loop's firings and re-read. A
-/// disconnect event ends the call with an error — the Go
-/// `ErrWatcherStopped` shape.
+/// disconnect event ends the call with an error.
 struct ZookeeperWatcher {
     zk: Arc<ZooKeeper>,
     prefix: String,
@@ -398,9 +395,9 @@ enum WatchSignal {
     Fatal(String),
 }
 
-/// The Go `ensureName`: create `path` when absent, with the ephemeral
-/// variant first deleting a leftover node at the path — the Go
-/// restart-race handling.
+/// Creates `path` when absent; the ephemeral
+/// variant first deleting a leftover node at the path, handling a
+/// restart race.
 async fn ensure_name(
     zk: &ZooKeeper,
     path: &str,
@@ -414,7 +411,7 @@ async fn ensure_name(
         .map_err(|e| RegistryError::Failed(format!("zookeeper exists {path}: {e}")))?;
     let exists = match stat {
         Some(stat) if ephemeral => {
-            // The Go restart-race handling: a leftover node at an
+            // Restart-race handling: a leftover node at an
             // ephemeral path is deleted before recreation.
             match zk.delete(path, Some(stat.version)).await {
                 Err(zookeeper_async::ZkError::NoNode) => {}
@@ -446,9 +443,9 @@ async fn ensure_name(
         };
         match zk.create(path, data.to_vec(), acl, mode).await {
             Err(zookeeper_async::ZkError::NodeExists) => {
-                // Concurrent creation won the race. The Go original
-                // fails here; the node exists either way, so this is
-                // an idempotent completion, not a divergence.
+                // Concurrent creation won the race. The node exists
+                // either way, so this is
+                // an idempotent completion.
                 match zk
                     .exists(path, false)
                     .await
@@ -474,7 +471,7 @@ async fn ensure_name(
 }
 
 /// Reads the instance list for `prefix` — each child znode's data
-/// parsed as the go-wind wire JSON. `filter` applies the Go watcher's
+/// parsed as the rush-wind wire JSON. `filter` applies the
 /// parsed-name filter; the registry-side read never filters.
 async fn read_instances(
     zk: &ZooKeeper,

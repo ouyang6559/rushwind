@@ -2,17 +2,16 @@
 //!
 //! Serves scripts from a map with zero IO — dynamic short-lived
 //! scripts, unit tests, RPC-pushed snippets. `set`/`delete` both
-//! notify watchers, the Go shape; the notification carrier is a
-//! tokio `watch` channel (coalesced latest-state signaling, the
-//! Go buffered-1 channel semantics) rather than one OS channel per
+//! notify watchers; the notification carrier is a
+//! tokio `watch` channel (coalesced latest-state signaling,
+//! buffered-1 semantics) rather than one OS channel per
 //! watcher.
 //!
-//! Divergence from the Go predecessor: watchers are stored as one
+//! Watchers are stored as one
 //! `watch::Sender` per watched key rather than a list of per-watcher
 //! channels — every receiver sees the same coalesced signal, and a
 //! dropped stream simply stops its receiver without touching the
-//! sender, so the Go context-cancellation unregistration goroutine
-//! disappears (dropping the stream is the unregistration). The source
+//! sender, so dropping the stream is the unregistration. The source
 //! dropping ends every one of its streams.
 
 use std::collections::HashMap;

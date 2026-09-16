@@ -1,7 +1,6 @@
-//! MessagePack engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/msgpack` package ported onto `rmp-serde`.
+//! MessagePack engine for the RushWind encoding contract, over `rmp-serde`.
 //!
-//! Like the Go engine, a direct delegate: compact binary, any serde
+//! A direct delegate: compact binary, any serde
 //! value round-trips.
 //!
 //! # Usage
@@ -26,7 +25,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `msgpack.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "msgpack";
 
 /// The MessagePack codec. State-free; construct one or fetch it from
@@ -41,8 +40,7 @@ impl MsgpackCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the msgpack codec");
     }

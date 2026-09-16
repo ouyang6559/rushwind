@@ -1,13 +1,11 @@
-//! File engine for the Rust configuration contract, ported from
-//! `go-wind-plugins/config/file`.
+//! File engine for the Rust configuration contract.
 //!
 //! The carrier is one file: [`load`](FileSource::load) reads its whole
 //! content as raw bytes, and [`watch_value`](FileSource::watch_value)
 //! pushes the new content on every write. The default path is fixed at
-//! construction; an explicit key on a call replaces it for that call —
-//! the Go `resolveKey` shape.
+//! construction; an explicit key on a call replaces it for that call.
 //!
-//! Watching follows the Go engine's hard-won lesson: the **parent
+//! Watching follows a hard-won lesson: the **parent
 //! directory** is watched, not the file — editors save by writing a
 //! temp file and renaming over the target, and a file-level watch is
 //! lost at the rename. Events for the target path with a create or
@@ -15,14 +13,18 @@
 //! landed yet) is skipped and the stream keeps waiting. The first
 //! content is *not* pushed at watch start — only changes are.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | one shared `fsnotify.Watcher` per source; concurrent `WatchValue` calls race for events on it | each stream owns its watcher — two concurrent streams each see every event, where the shared channel would split them |
-//! | `WithWatch` pre-initialises the watcher | watching starts lazily with the stream; the option is moot |
-//! | one push per fsnotify event | event **bursts** coalesce into one delivery, and a re-read yielding already-delivered content is suppressed — desktop backends emit several (sometimes delayed) events per save, and a stale replay would serve an old value over a newer one |
-//! | stream ends on context cancellation | the stream ends when its watcher fails fatally; dropping the stream stops the watch (drop is the cancellation) |
+//! - Each stream owns its watcher: two concurrent streams each see
+//!   every event, where one shared watcher would split the events
+//!   between them.
+//! - Watching starts lazily with the stream.
+//! - Event **bursts** coalesce into one delivery, and a re-read
+//!   yielding already-delivered content is suppressed — desktop backends
+//!   emit several (sometimes delayed) events per save, and a stale
+//!   replay would serve an old value over a newer one.
+//! - The stream ends when its watcher fails fatally; dropping the
+//!   stream stops the watch (drop is the cancellation).
 //!
 //! Portability note: the event kinds that end a stream are
 //! backend-specific; on the common desktop backends (inotify,
@@ -51,8 +53,8 @@ pub struct FileSource {
 
 impl FileSource {
     /// Creates the source with the default config path. The path is
-    /// resolved to absolute so watched events match it — the Go
-    /// constructor's shape; an empty path is a construction error.
+    /// resolved to absolute so watched events match it; an empty path
+    /// is a construction error.
     pub fn new(path: &str) -> Result<Self, ConfigError> {
         if path.is_empty() {
             return Err(ConfigError::Failed("path invalid".to_string()));
@@ -62,7 +64,7 @@ impl FileSource {
         })
     }
 
-    /// The Go resolveKey: an explicit key replaces the default path for
+    /// An explicit key replaces the default path for
     /// one call.
     fn resolve(&self, key: &str) -> PathBuf {
         if key.is_empty() {
@@ -73,7 +75,7 @@ impl FileSource {
     }
 }
 
-/// The Go `filepath.Abs`: an absolute path stands; a relative one is
+/// An absolute path stands; a relative one is
 /// joined against the current directory. Lexical only — no existence
 /// check.
 fn lexical_absolute(path: &Path) -> PathBuf {
@@ -92,8 +94,8 @@ impl Source for FileSource {
     fn load<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, ConfigError>> {
         Box::pin(async move {
             let path = self.resolve(key);
-            // A read failure — including a missing file — is an error,
-            // the Go os.ReadFile shape. Absence-as-None is the env
+            // A read failure — including a missing file — is an error.
+            // Absence-as-None is the env
             // engine's answer, not this one's.
             std::fs::read(&path)
                 .map(Some)
@@ -167,7 +169,7 @@ impl Source for FileSource {
                                 }
                             }
                             // The write may not have landed yet; a read
-                            // that fails is skipped, the Go debug-continue.
+                            // that fails is skipped and the pump continues.
                             if let Ok(data) = std::fs::read(&target) {
                                 if last_sent.as_deref() != Some(data.as_slice()) {
                                     last_sent = Some(data.clone());
@@ -178,14 +180,12 @@ impl Source for FileSource {
                                 }
                             }
                             if fatal {
-                                // A fatal watch error ends the stream, the
-                                // Go error-return shape.
+                                // A fatal watch error ends the stream.
                                 break;
                             }
                         }
                         Ok(Err(_)) => {
-                            // A fatal watch error ends the stream, the
-                            // Go error-return shape.
+                            // A fatal watch error ends the stream.
                             break;
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {

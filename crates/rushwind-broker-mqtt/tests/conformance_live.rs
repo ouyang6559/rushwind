@@ -23,8 +23,7 @@ fn broker() -> MqttBroker {
 }
 
 /// The round trip: subscribe a wildcard filter, publish onto a
-/// matching topic, and receive the payload — payload-only, as the Go
-/// engine publishes.
+/// matching topic, and receive the payload — payload-only.
 #[tokio::test]
 async fn publish_subscribes_and_delivers() {
     let broker = broker();
@@ -59,7 +58,7 @@ async fn publish_subscribes_and_delivers() {
 }
 
 /// The payload-only rule: headers and metadata have no MQTT 3.1.1
-/// carrier, so they are absent on delivery — the Go engine's shape.
+/// carrier, so they are absent on delivery.
 #[tokio::test]
 async fn deliveries_carry_payload_only() {
     let broker = broker();

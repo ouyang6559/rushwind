@@ -53,8 +53,8 @@ fn unique_suffix() -> String {
 }
 
 /// Creates a one-partition topic through samsa's admin protocol on
-/// the controller connection — the deterministic alternative to the
-/// Go engine's auto-create-topic-on-subscribe option.
+/// the controller connection — the deterministic alternative to
+/// auto-creating the topic on subscribe.
 async fn create_topic(topic: &str) {
     let mut metadata = ClusterMetadata::<TcpConnection>::new(
         vec![broker_address()],

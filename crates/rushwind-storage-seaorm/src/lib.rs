@@ -1,7 +1,7 @@
 //! The SeaORM-backed engine for the [`Repository`] contract.
 //!
-//! go-crud's `gorm/` module drives GORM through its dynamic query builder;
-//! this crate is the same idea on the Rust side: [`sea_orm::DatabaseConnection`]
+//! GORM popularized the dynamic query builder; this crate applies the
+//! same idea: [`sea_orm::DatabaseConnection`]
 //! for pooling, drivers and transactions, [`sea_orm::sea_query`] for dynamic
 //! statement construction. Nothing here needs generated entities — the
 //! [`Schema`] is the single source of truth, exactly like the contract wants.

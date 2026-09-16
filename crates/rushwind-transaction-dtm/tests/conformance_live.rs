@@ -1,5 +1,5 @@
 //! Live DTM suite: submits real transactions to a running dtmsvr
-//! (`DTM_SERVER`, default the Go client's localhost default) and
+//! (`DTM_SERVER`, default the DTM localhost default) and
 //! requires DTM itself to drive the participant endpoints. Off by
 //! default; CI runs it against a dtm service container.
 #![cfg(feature = "live")]

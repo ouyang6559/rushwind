@@ -1,25 +1,22 @@
-//! Kafka engine for the RushWind broker contract — the Go
-//! `go-wind-plugins/broker/kafka` ported onto `samsa`, the
-//! pure-Rust Kafka protocol client (the Go engine rides
-//! segmentio/kafka-go; samsa keeps the Rust side free of librdkafka
-//! and its native build tooling).
+//! Kafka engine for the RushWind broker, over `samsa`, the
+//! pure-Rust Kafka protocol client (keeping the Rust side free of
+//! librdkafka and its native build tooling).
 //!
 //! # The wire behavior
 //!
-//! Publishes go through one producer per topic — the Go engine's
+//! Publishes go through one producer per topic — a
 //! one-topic-one-writer shape — built on first use and cached by
 //! topic name. The payload becomes the record value, the message
 //! headers ride as record headers, and an empty key maps to an
-//! absent record key. The partition choice is the Go engine's
-//! default balancer, least-loaded-by-bytes: a running byte count
+//! absent record key. The partition choice is a
+//! least-loaded-by-bytes balancer: a running byte count
 //! per partition, pick the smallest, first on ties. Per-topic
 //! partition lists come from cluster metadata, fetched once per
 //! topic on first use and frozen; a mid-run partition expansion
-//! goes unnoticed (the Go engine watched partitions; samsa has no
-//! watcher).
+//! goes unnoticed (the partition list is never refetched).
 //!
-//! Subscribes join a fresh consumer group per subscription — the
-//! Go engine's uuid-default queue name — with a random group id
+//! Subscribes join a fresh consumer group per subscription, with a
+//! random group id
 //! minted at subscribe time. The samsa group machinery
 //! (find-coordinator, join, sync, round-robin self-assignment of
 //! the single member) carries the delivery pump: each fetched
@@ -27,34 +24,31 @@
 //! payload, its key (lossily decoded into the contract's string
 //! key), its partition, and its offset. A group stream that ends —
 //! a coordinator error, a rebalance — rejoins after a doubling
-//! backoff capped at thirty seconds, the Go engine's reconnect
-//! shape. Offsets auto-commit per fetched batch inside samsa —
-//! the Go engine's `AutoAck` default commits after the handler
-//! returns — so this is an implicit-acknowledgment engine and
+//! backoff capped at thirty seconds. Offsets auto-commit per fetched
+//! batch inside samsa rather than after the handler returns, so
+//! this is an implicit-acknowledgment engine and
 //! [`Event::ack`] is a no-op.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
 //! - Message headers are produced but not surfaced: samsa's fetch
 //!   path carries no headers, so delivered messages have empty
 //!   header maps.
 //! - A fresh group's uncommitted partitions start at offset zero
-//!   (earliest); kafka-go's group readers started at the newest
-//!   offset. The contract has no per-subscribe options, so the
+//!   (earliest). The contract has no per-subscribe options, so the
 //!   start offset is not configurable.
-//! - The Go engine's SASL/TLS dialer knobs, per-publish balancer
+//! - SASL/TLS dialer knobs, per-publish balancer
 //!   selection, producer batch knobs (size, timeout, acks,
 //!   compression), tracers, and the auto-create-topic-on-subscribe
-//!   option are not ported: the constructor takes addresses only
+//!   option are not exposed: the constructor takes addresses only
 //!   and samsa's producer defaults stand. An empty address list
-//!   falls back to `127.0.0.1:9092`, the Go engine's default.
+//!   falls back to the `127.0.0.1:9092` default.
 //! - Unsubscribe drops the pump without a leave-group request; the
 //!   coordinator reaps the member at the session timeout.
-//! - The Go engine's writer recreation and retry on a cached
-//!   writer's failure is not ported: flush failures stay inside
+//! - Writer recreation and retry on a cached
+//!   writer's failure are out of scope: flush failures stay inside
 //!   samsa's producer task and surface on its response channel,
-//!   which this engine drains and discards — the Go async default
-//!   ignored its completion callback the same way.
+//!   which this engine drains and discards.
 //!
 //! # Testing
 //!
@@ -80,8 +74,7 @@ use samsa::prelude::{
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-/// The fallback bootstrap host when the settings list is empty —
-/// the Go engine's `defaultAddr`.
+/// The fallback bootstrap host when the settings list is empty.
 const DEFAULT_HOST: &str = "127.0.0.1";
 /// The fallback bootstrap port when the settings list is empty.
 const DEFAULT_PORT: u16 = 9092;
@@ -99,14 +92,14 @@ static FALLBACK_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(serde::Deserialize)]
 pub struct KafkaSettings {
     /// Bootstrap addresses as `host:port`. An empty or absent list
-    /// falls back to the Go engine's default localhost bootstrap.
+    /// falls back to the default localhost bootstrap.
     #[serde(default)]
     pub addrs: Vec<String>,
 }
 
 /// Per-topic partition state: the metadata-fetched partition list
 /// and the running byte counts the least-loaded balancer picks
-/// from — the segmentio `LeastBytes` counters.
+/// from.
 struct PartitionState {
     /// Partition ids from cluster metadata, frozen at fetch time.
     partitions: Vec<i32>,
@@ -116,8 +109,7 @@ struct PartitionState {
 
 impl PartitionState {
     /// Picks the index of the partition with the fewest produced
-    /// bytes so far — first index on ties, the segmentio
-    /// least-bytes choice.
+    /// bytes so far, first index on ties.
     fn least_loaded(&self) -> usize {
         let mut lowest = 0;
         let mut lowest_bytes = self.bytes[0].load(Ordering::Relaxed);
@@ -137,8 +129,8 @@ fn kafka_err(error: SamsaError) -> BrokerError {
     BrokerError::Failed(format!("kafka: {error}"))
 }
 
-/// Mints a random group id — the Go engine's uuid-default queue
-/// name. An entropy failure falls back to a time-and-counter pair,
+/// Mints a random group id for a subscription's fresh consumer
+/// group. An entropy failure falls back to a time-and-counter pair,
 /// which only needs to be unique per subscribe.
 fn random_group_id() -> String {
     let mut bytes = [0u8; 16];
@@ -172,7 +164,7 @@ struct Inner {
     /// Cluster metadata for partition enumeration; `None` while
     /// disconnected.
     metadata: Mutex<Option<ClusterMetadata<TcpConnection>>>,
-    /// Per-topic producer senders — the Go engine's
+    /// Per-topic producer senders — the
     /// one-topic-one-writer map. The producer task behind each
     /// sender owns its own metadata copy.
     producers: Mutex<HashMap<String, mpsc::Sender<ProduceMessage>>>,
@@ -190,7 +182,7 @@ pub struct KafkaBroker {
 impl KafkaBroker {
     /// Builds an engine for the Kafka cluster at `addrs`
     /// (`host:port` bootstrap addresses). Malformed entries are
-    /// dropped; an empty result falls back to the Go engine's
+    /// dropped; an empty result falls back to the
     /// default localhost bootstrap.
     pub fn new(addrs: Vec<String>) -> Self {
         let mut addrs: Vec<BrokerAddress> = addrs
@@ -222,8 +214,8 @@ impl KafkaBroker {
     }
 
     /// Constructs from the bootstrap factory's settings wire shape:
-    /// `addrs` (optional; an empty list falls back to the Go
-    /// engine's default localhost bootstrap).
+    /// `addrs` (optional; an empty list falls back to the
+    /// default localhost bootstrap).
     pub fn from_settings(settings: serde_json::Value) -> Result<Self, BrokerError> {
         let settings: KafkaSettings = serde_json::from_value(settings)
             .map_err(|e| BrokerError::Failed(format!("settings parse: {e}")))?;
@@ -328,8 +320,8 @@ impl Broker for KafkaBroker {
                 return Err(BrokerError::NotConnected);
             }
             let state = self.partition_state(topic).await?;
-            // One producer per topic, built on first use — the Go
-            // engine's one-topic-one-writer map.
+            // One producer per topic, built on first use — the
+            // one-topic-one-writer map.
             let sender = {
                 let mut producers = self.inner.producers.lock().await;
                 if !producers.contains_key(topic) {
@@ -347,8 +339,8 @@ impl Broker for KafkaBroker {
                     } = producer;
                     // The producer task parks every flush response
                     // on an unbounded channel nobody reads; drain
-                    // and discard — the Go engine's async default
-                    // ignored its completion callback the same way.
+                    // and discard; nothing awaits the completion
+                    // responses.
                     tokio::spawn(async move { while receiver.recv().await.is_some() {} });
                     producers.insert(topic.to_string(), sender);
                 }
@@ -357,8 +349,8 @@ impl Broker for KafkaBroker {
                     .expect("producer just inserted")
                     .clone()
             };
-            // Least-loaded partition: the Go engine's default
-            // balancer.
+            // Least-loaded partition choice:
+            // least-loaded-by-bytes.
             let choice = state.least_loaded();
             state.bytes[choice].fetch_add(message.payload.len() as u64, Ordering::Relaxed);
             let record = ProduceMessage {
@@ -396,8 +388,8 @@ impl Broker for KafkaBroker {
                 return Err(BrokerError::NotConnected);
             }
             let state = self.partition_state(topic).await?;
-            // A fresh consumer group per subscription — the Go
-            // engine's uuid-default queue name.
+            // A fresh consumer group per subscription, with a
+            // random group id.
             let group = ConsumerGroupBuilder::<TcpConnection>::new(
                 self.inner.addrs.clone(),
                 random_group_id(),

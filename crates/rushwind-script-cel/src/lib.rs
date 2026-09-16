@@ -1,7 +1,7 @@
-//! The CEL engine for the Rust script contract — the Go predecessor's
-//! cel-go engine, rebuilt over [`cel_interpreter`].
+//! The CEL engine for the Rust script contract, built over
+//! [`cel_interpreter`].
 //!
-//! Semantics preserved from the predecessor:
+//! Semantics:
 //!
 //! - `load` compiles an expression and keeps it; `execute` evaluates
 //!   every loaded expression in order against one variable context
@@ -9,7 +9,7 @@
 //!   result.
 //! - `register_global` binds a variable; `get_global` reads it back.
 //! - `register_module` flattens a value map into `name_key`-prefixed
-//!   variables, the Go flattening shape.
+//!   variables.
 //! - `register_function` stores a host function and
 //!   `call_function` invokes it host-side with the marshalled
 //!   arguments.
@@ -17,18 +17,16 @@
 //!   the key on every change tick; `stop_watch` aborts it, and close
 //!   aborts all of them.
 //!
-//! Divergences from the Go predecessor:
+//! Divergences from a type-checked CEL environment:
 //!
-//! - The predecessor registered host functions into the cel-go
-//!   environment, making them callable from expressions; cel-rust
-//!   functions take statically-typed closures, which the dynamic
-//!   [`HostFunction`] shape cannot become — host functions are
+//! - Host functions are
 //!   reachable through `call_function` only, never from an
-//!   expression.
-//! - The predecessor's `env.Env`/type-inference bookkeeping collapses
-//!   into cel-rust's dynamic [`cel_interpreter`] values — no CEL type
-//!   inference pass exists to port.
-//! - The watch goroutine becomes a tokio task holding the engine
+//!   expression: cel-rust functions take statically-typed closures,
+//!   which the dynamic
+//!   [`HostFunction`] shape cannot become.
+//! - There is no CEL type-inference pass — values stay the dynamic
+//!   [`cel_interpreter`] values.
+//! - The watch loop is a tokio task holding the engine
 //!   weakly; the engine dropping ends the task, and `stop_watch` maps
 //!   to task abortion.
 //!
@@ -37,7 +35,7 @@
 //! | Capability | Status |
 //! |:---|:---|
 //! | loader / executor / globals / functions / modules / watch / lifecycle | implemented |
-//! | sandbox, runtime hooks, sync+quota | not offered by the predecessor's CEL engine either |
+//! | sandbox, runtime hooks, sync+quota | not offered |
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -54,7 +52,7 @@ use rushwind_script::{
     ScriptExecutor, ScriptLoader, ScriptValue, ScriptWatcher, SharedEngine, SharedScriptSource,
 };
 
-/// The registry name — the Go `scriptEngine.CELType` constant.
+/// The registry name.
 pub const NAME: &str = "cel";
 
 /// The `cel` engine: expression compilation and evaluation over
@@ -357,10 +355,10 @@ impl ScriptExecutor for CelEngine {
                     context.add_variable_from_value(name.clone(), cel_value);
                 }
             }
-            // The predecessor serialized execution behind its exec
-            // mutex and answered with the last program's result; the
+            // Execution is serialized behind the program-list lock
+            // and answers with the last program's result; the
             // program list stays locked for the duration here, which
-            // is the same serialization.
+            // is the serialization.
             let programs = self.programs.lock().expect("cel engine program lock");
             if programs.is_empty() {
                 drop(programs);
@@ -488,7 +486,7 @@ impl rushwind_script::FunctionRegistrar for CelEngine {
 }
 
 impl rushwind_script::ModuleRegistrar for CelEngine {
-    /// The predecessor's flattening: every map entry becomes a
+    /// Flattening: every map entry becomes a
     /// `name_key`-prefixed global variable.
     fn register_module(&self, name: &str, module: ScriptValue) -> Result<(), ScriptError> {
         self.guard_initialized()?;
@@ -568,9 +566,8 @@ impl ScriptWatcher for CelEngine {
 }
 
 /// Builds an initialized engine, arming the weak self-reference the
-/// watch tasks need. The Go predecessor registered this under its
-/// CEL type through package `init()`; [`register`] is the explicit
-/// Rust form.
+/// watch tasks need. [`register`] installs it in the
+/// factory registry under [`NAME`].
 pub fn factory() -> Result<SharedEngine, ScriptError> {
     let engine = Arc::new(CelEngine::new());
     *engine.weak.lock().expect("cel engine weak lock") = Arc::downgrade(&engine);
@@ -795,7 +792,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn probes_offer_the_predecessor_capability_set() {
+    async fn probes_offer_the_full_capability_set() {
         let engine: Arc<dyn ScriptEngine> = factory().expect("engine");
         assert!(engine.clone().as_loader().is_some());
         assert!(engine.clone().as_executor().is_some());

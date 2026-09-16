@@ -14,8 +14,8 @@
 //! source: signals are untransformed — re-load after a signal to get
 //! the freshly transformed content.
 //!
-//! Divergence from the Go predecessor: `Close` is `Drop`, and the
-//! nil-inner / nil-transform constructor checks are dropped
+//! `Close` is `Drop`, and
+//! null-inner / null-transform constructor checks are unnecessary
 //! (`SharedScriptSource` and [`TransformFn`] cannot be null).
 
 use crate::source::{ScriptSource, SharedScriptSource, SignalStream};
@@ -96,7 +96,7 @@ impl ScriptSource for TransformSource {
 }
 
 /// The no-op transform: returns its input unchanged. A placeholder and
-/// test fixture, the Go `IdentityTransform`.
+/// test fixture.
 pub fn identity_transform(_key: &str, raw: String) -> Result<String, ScriptError> {
     Ok(raw)
 }

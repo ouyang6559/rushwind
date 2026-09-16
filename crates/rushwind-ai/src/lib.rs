@@ -1,27 +1,22 @@
-//! AI model contract for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/ai`: a configuration taxonomy pointing at an LLM —
+//! AI model contract for RushWind: a configuration taxonomy pointing at an LLM —
 //! cloud ([`ModelType::Cloud`]: OpenAI, Qwen, any OpenAI-compatible
 //! API) or local ([`ModelType::Local`]: Ollama) — plus the message,
 //! tool, request and response shapes of the chat-completions wire,
 //! and the [`ChatModel`] trait engines implement.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! The Go domain ships three flavors — `openai` (over go-openai),
-//! `eino` (over CloudWeGo eino) and `langchaingo` — each repeating
-//! the same `Config → client` factory for the same two deployment
-//! modes, then wrapping its framework's chain/agent/compose facade.
-//! Rust collapses the three into one contract plus one engine
-//! (`rushwind-ai-openai`): there is a single OpenAI-compatible
-//! client story here, and orchestration frameworks (eino's compose,
-//! langchaingo's chains and agents) stay the caller's business, the
-//! same split as the taskq/apalis pair.
+//! The contract is one `Config → client` factory over two deployment
+//! modes, plus the [`ChatModel`] trait engines implement. There is a
+//! single engine today (`rushwind-ai-openai`): one OpenAI-compatible
+//! client story, and orchestration frameworks (chains, agents,
+//! compose graphs) stay the caller's business.
 //!
-//! Go's nil-config guards become typed errors: a cloud [`Config`]
+//! Missing configuration surfaces as typed errors: a cloud [`Config`]
 //! without [`CloudConfig`] is [`AiError::MissingCloudConfig`], a
 //! local one without [`LocalConfig`] is
-//! [`AiError::MissingLocalConfig`]. The third Go guard —
-//! "unsupported ai model type" — has no Rust shape: [`ModelType`]
+//! [`AiError::MissingLocalConfig`]. An unrecognized model type cannot
+//! occur: [`ModelType`]
 //! is an enum, so the compiler holds the check. Wire settings are
 //! plain snake_case keys, read through [`serde`].
 
@@ -38,11 +33,9 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum AiError {
-    /// Cloud model selected but no [`CloudConfig`] supplied — the Go
-    /// "cloud config is nil".
+    /// Cloud model selected but no [`CloudConfig`] supplied.
     MissingCloudConfig,
-    /// Local model selected but no [`LocalConfig`] supplied — the Go
-    /// "local config is nil".
+    /// Local model selected but no [`LocalConfig`] supplied.
     MissingLocalConfig,
     /// Neither the request nor the [`Config`] names a model.
     EmptyModel,
@@ -77,9 +70,8 @@ impl std::fmt::Display for AiError {
 
 impl std::error::Error for AiError {}
 
-/// Whether the model runs locally or in the cloud — the Go
-/// `ModelType` (1 = local, 2 = cloud; the wire speaks the lowercase
-/// names).
+/// Whether the model runs locally or in the cloud. On the
+/// wire the lowercase names are spoken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelType {
@@ -89,7 +81,7 @@ pub enum ModelType {
     Cloud,
 }
 
-/// Settings for cloud-based LLM providers — the Go `CloudConfig`.
+/// Settings for cloud-based LLM providers.
 ///
 /// `base_url` empty (or absent on the wire) selects the provider
 /// default (`https://api.openai.com/v1`); `organization` empty
@@ -106,8 +98,8 @@ pub struct CloudConfig {
     pub organization: String,
 }
 
-/// Settings for locally-hosted models — the Go `LocalConfig`.
-/// Zero values resolve like Go: empty host → `localhost`, port 0 →
+/// Settings for locally-hosted models.
+/// Zero values resolve to sensible defaults: empty host → `localhost`, port 0 →
 /// `11434` (Ollama's default).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(default)]
@@ -127,10 +119,10 @@ impl Default for LocalConfig {
     }
 }
 
-/// The configuration engines build a client from — the Go `Config`.
+/// The configuration engines build a client from.
 /// Exactly the branch named by [`Config::model_type`] must be
 /// populated; the other is ignored. `model_type` is required on the
-/// wire (Go's zero value is the invalid type), everything else
+/// wire, everything else
 /// defaults.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Config {
@@ -141,7 +133,7 @@ pub struct Config {
     #[serde(default)]
     pub model_name: String,
     /// The request timeout in seconds; 0 uses the engine default
-    /// (30 s, as in Go).
+    /// (30 s).
     #[serde(default)]
     pub timeout_seconds: u32,
     /// Cloud settings, required when `model_type` is
@@ -361,13 +353,12 @@ pub struct ChatResponse {
     pub usage: Option<Usage>,
 }
 
-/// The chat contract — the Go `eino model.ChatModel` / langchaingo
-/// `llms.Model` surface, collapsed to its shared core. Engines must
+/// The chat contract: generate one assistant turn from a conversation.
+/// Engines must
 /// be callable through shared references (`&self`).
 ///
 /// Streaming and embeddings are engine-level extensions (see
-/// `rushwind-ai-openai`), not part of the contract: the Go flavors
-/// expose them through framework-specific abstractions.
+/// `rushwind-ai-openai`), not part of the contract.
 pub trait ChatModel: Send + Sync {
     /// Completes the conversation — the OpenAI chat-completions
     /// call.

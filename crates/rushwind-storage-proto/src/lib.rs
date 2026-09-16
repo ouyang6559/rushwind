@@ -1,12 +1,11 @@
 //! The Protobuf wire contract for RushWind storage queries — the proto face
-//! of the [`Repository`](rushwind_storage::Repository) contract, mirroring
-//! go-crud's `api/` directory.
+//! of the [`Repository`](rushwind_storage::Repository) contract.
 //!
 //! The single source of truth is `proto/rushwind/storage/v1/query.proto` at
 //! the repository root. Everything exported from the [`v1`] module is
 //! **generated** from it — types by prost, the protojson JSON mapping by
-//! pbjson — so the wire format cannot drift from the contract. A Go service
-//! and a Rust service exchange byte-identical messages.
+//! pbjson — so the wire format cannot drift from the contract. Services in
+//! different languages exchange byte-identical messages.
 //!
 //! The [`wire`] module converts generated types into the engine-side
 //! contract types ([`FilterExpr`](rushwind_storage::FilterExpr),

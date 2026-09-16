@@ -1,6 +1,6 @@
 //! BBR conformance: admission below the inflight cap, rejection at
 //! the cap, done releasing the slot, and the max-inflight floor of
-//! one — the Go `bbr_test.go` shapes.
+//! one.
 
 #![cfg(test)]
 
@@ -9,8 +9,8 @@ use std::time::Duration;
 use rushwind_ratelimit::Limiter;
 use rushwind_ratelimit_bbr::{BbrLimiter, BbrOptions};
 
-/// A freshly built limiter admits at least one request — the Go
-/// `maxInflight` floor.
+/// A freshly built limiter admits at least one request — the
+/// `max_inflight` floor.
 #[test]
 fn admits_under_empty_load() {
     let limiter = BbrLimiter::new();

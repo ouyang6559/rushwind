@@ -1,5 +1,5 @@
 //! The assembled middleware stack — [`HttpEdge`] chains the request
-//! middlewares in the Go admin's order with one call.
+//! middlewares in the canonical order with one call.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,7 +11,7 @@ use crate::{cors, cors_compat, logging, recovery, request_id, timeout};
 /// The request-stack builder. Defaults: recovery, request-id and
 /// logging on; CORS and timeout off until configured. [`HttpEdge::wrap`]
 /// applies the enabled middlewares so that at request time they run in
-/// the Go admin's order — recovery, request-id, logging, CORS,
+/// canonical order — recovery, request-id, logging, CORS,
 /// timeout — no matter the order the options were set in.
 #[derive(Clone)]
 pub struct HttpEdge {
@@ -19,8 +19,9 @@ pub struct HttpEdge {
     logging: bool,
     cors: Option<cors::CorsOptions>,
     /// Whether the CORS options route through the gorilla-compatible
-    /// layer ([`crate::cors_compat`]) instead of tower-http — the parity
-    /// choice for deployments whose reference wires gorilla/handlers.
+    /// layer ([`crate::cors_compat`]) instead of tower-http — the
+    /// compatibility choice for deployments that require
+    /// gorilla/handlers-style CORS semantics.
     cors_compat: bool,
     timeout: Option<Duration>,
     recovery: bool,

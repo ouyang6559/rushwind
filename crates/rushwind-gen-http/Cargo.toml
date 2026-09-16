@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-gen-http"
-description = "Descriptor-driven Rust code generator for the proto-HTTP route surface: per-binding route tables with form-binding plans, (package, reason) → HTTP status error tables, one service trait per annotated proto service, null placeholder impls, and the public/gated mount emitters — mirroring protoc-gen-go-http v2.9.2 semantics over a caller-supplied descriptor pool."
+description = "Descriptor-driven Rust code generator for the proto-HTTP route surface: per-binding route tables with form-binding plans, (package, reason) → HTTP status error tables, one service trait per annotated proto service, null placeholder impls, and the public/gated mount emitters over a caller-supplied descriptor pool."
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.81"

@@ -1,8 +1,6 @@
-//! XML engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/xml` package ported onto `quick-xml`.
+//! XML engine for the RushWind encoding contract, over `quick-xml`.
 //!
-//! One structural divergence from the Go engine: Go's `encoding/xml`
-//! marshals any value as a complete XML document, while `quick-xml`'s
+//! Unlike document-style XML mappers, `quick-xml`'s
 //! serde support writes fields without a wrapper element. Marshal
 //! therefore wraps the value in a `<value>` root element to keep the
 //! output well-formed; unmarshal accepts any well-formed XML whose
@@ -36,7 +34,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `xml.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "xml";
 
 /// The element name marshal wraps values in so the output is a
@@ -55,8 +53,7 @@ impl XmlCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the xml codec");
     }

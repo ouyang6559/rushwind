@@ -1,9 +1,8 @@
-//! Noop engine for the Rust authorization contract, ported from
-//! `go-wind-plugins/security/authz/noop`.
+//! Noop engine for the Rust authorization contract.
 //!
 //! [`is_authorized`](NoopAuthz::is_authorized) returns `true` for
-//! everything; the list filters return the **empty list** — the Go
-//! behavior, deliberately asymmetric: the boolean says "no objection"
+//! everything; the list filters return the **empty list** —
+//! deliberately asymmetric: the boolean says "no objection"
 //! while the filters volunteer nothing.
 //!
 //! A permit-all engine is a placeholder, not a policy: mount it where

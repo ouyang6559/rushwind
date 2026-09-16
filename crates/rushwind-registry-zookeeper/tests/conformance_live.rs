@@ -2,7 +2,7 @@
 //! container. Compile-gated behind the `live` feature; the ensemble
 //! address comes from `REGISTRY_ZOOKEEPER_ADDRESS`. These tests pin the
 //! interoperability contract where it matters most — a real ZooKeeper
-//! serving byte-exact go-wind wire values at the go-wind node layouts,
+//! serving byte-exact rush-wind wire values at the rush-wind node layouts,
 //! with child watches firing in both directions.
 
 #![cfg(feature = "live")]
@@ -41,8 +41,8 @@ async fn registered_node_serves_the_go_wire_value() {
         .await
         .expect("register must succeed");
 
-    // A raw ZooKeeper read sees the byte-exact go-wind wire value at
-    // the go-wind node — the interoperability contract, live.
+    // A raw ZooKeeper read sees the byte-exact rush-wind wire value at
+    // the rush-wind node — the interoperability contract, live.
     let key = registry_key(DEFAULT_NAMESPACE, &registration.instance);
     let raw = zookeeper_async::ZooKeeper::connect(&endpoint(), Duration::from_secs(5), |_| {})
         .await

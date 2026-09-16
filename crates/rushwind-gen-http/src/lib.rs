@@ -670,7 +670,7 @@ fn emit_header(out: &mut String, route_count: usize, error_entries: usize) {
     );
     let _ = writeln!(
         out,
-        "// Route, binding-plan, service-trait and error-table surface mirroring protoc-gen-go-http v2.9.2"
+        "// Route, binding-plan, service-trait and error-table surface for the proto-HTTP annotation semantics"
     );
     let _ = writeln!(
         out,

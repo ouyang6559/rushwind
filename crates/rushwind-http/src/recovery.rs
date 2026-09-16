@@ -1,4 +1,4 @@
-//! The panic-recovery middleware — the Go `recovery`.
+//! The panic-recovery middleware.
 //!
 //! axum has no built-in panic isolation: a panicking handler aborts the
 //! connection. This wrapper catches the unwind, logs the payload under

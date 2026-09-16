@@ -2,7 +2,7 @@
 //! container. Compile-gated behind the `live` feature; the endpoint comes
 //! from `REGISTRY_ETCD_ENDPOINT`. These tests pin the interoperability
 //! contract where it matters most — a real etcd serving byte-exact
-//! go-wind wire values.
+//! rush-wind wire values.
 
 #![cfg(feature = "live")]
 
@@ -52,8 +52,8 @@ async fn registered_key_serves_the_go_wire_value() {
         .await
         .expect("register must succeed");
 
-    // A raw etcd read sees the byte-exact go-wind wire value at the
-    // go-wind key — the interoperability contract, live.
+    // A raw etcd read sees the byte-exact rush-wind wire value at the
+    // rush-wind key — the interoperability contract, live.
     let key = registry_key(DEFAULT_NAMESPACE, &registration.instance);
     let value = raw_get(&key).await.expect("key must exist");
     assert_eq!(value, registry_json(&registration));

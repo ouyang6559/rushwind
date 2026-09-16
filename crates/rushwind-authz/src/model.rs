@@ -112,7 +112,7 @@ impl Project {
 pub type Projects = Vec<Project>;
 
 /// One resource/action pair, the unit of the pair-filter query. The
-/// field names match the Go predecessor's JSON tags.
+/// field names are `resource` and `action`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pair {
     /// The resource of the pair.
@@ -127,11 +127,9 @@ pub type Pairs = Vec<Pair>;
 /// The policy-state interchange: named entries carrying JSON payloads,
 /// each engine reading the entries it defines.
 ///
-/// The Go predecessor passes engine-local Go structs behind
-/// `map[string]interface{}` and runtime type assertions; the JSON
-/// interchange here carries the same shapes the Go tags define, and a
+/// Each engine deserializes the JSON shapes its own rule types define; a
 /// payload that does not deserialize into an engine's rule type is
-/// **silently skipped** — the Go assertion-failure behavior.
+/// **silently skipped** rather than rejected.
 pub type PolicyMap = HashMap<String, serde_json::Value>;
 
 /// The role-state interchange, the role half of [`PolicyMap`].
@@ -141,11 +139,11 @@ pub type RoleMap = HashMap<String, serde_json::Value>;
 mod tests {
     use super::*;
 
-    /// Golden vector: the pair's JSON shape matches the Go predecessor's
-    /// `json.Marshal(engine.Pair{...})` — field names `resource`/`action`
-    /// from its struct tags, in declaration order.
+    /// Golden vector: the pair's JSON shape is
+    /// `{"resource":...,"action":...}` — field names in declaration
+    /// order.
     #[test]
-    fn pair_json_shape_matches_go_tags() {
+    fn pair_json_shape_is_stable() {
         let pair = Pair {
             resource: Resource::from("doc:1"),
             action: Action::from("read"),
@@ -156,7 +154,7 @@ mod tests {
         );
     }
 
-    /// The exact dual: Go's `json.Unmarshal` shape parses back into the
+    /// The exact dual: the same JSON shape parses back into the
     /// same pair.
     #[test]
     fn pair_json_round_trips() {
@@ -166,8 +164,8 @@ mod tests {
         assert_eq!(pair.action.as_str(), "write");
     }
 
-    /// Divergence pin: serde rejects a payload missing either field,
-    /// where Go's unmarshal would zero-default the missing one. Engines
+    /// Strictness pin: serde rejects a payload missing either field.
+    /// Engines
     /// consume the interchange through deserialization and skip what
     /// fails to parse — so the strictness surfaces as a skipped payload,
     /// never a half-formed rule.

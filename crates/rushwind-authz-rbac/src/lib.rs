@@ -1,5 +1,4 @@
-//! RBAC engine for the Rust authorization contract, ported from
-//! `go-wind-plugins/security/authz/rbac`.
+//! RBAC engine for the Rust authorization contract.
 //!
 //! Two maps drive everything:
 //!
@@ -32,8 +31,7 @@ use rushwind_authz::{
 };
 use serde::{Deserialize, Serialize};
 
-/// One role's permission: a resource pattern and an action pattern. The
-/// JSON field names match the Go predecessor's tags.
+/// One role's permission: a resource pattern and an action pattern.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Permission {
     /// The resource pattern.
@@ -178,7 +176,7 @@ impl Engine for RbacEngine {
         projects: Projects,
     ) -> Result<Projects, AuthzError> {
         // The RBAC model has no project axis: the subject check decides
-        // per project, the Go behavior.
+        // per project.
         let config = self.config.read().expect("rbac config lock poisoned");
         let mut result = vec![];
         for project in projects {
@@ -221,14 +219,14 @@ impl Engine for RbacEngine {
     }
 
     fn filter_authorized_projects(&self, _subjects: Subjects) -> Result<Projects, AuthzError> {
-        // No project axis: the Go engine returns the empty list.
+        // No project axis: the empty list.
         Ok(vec![])
     }
 
     fn set_policies(&self, policies: PolicyMap, roles: RoleMap) -> Result<(), AuthzError> {
         // Each entry the engine defines deserializes into its typed
         // map; anything else — unknown names, malformed payloads — is
-        // silently skipped, the Go assertion-failure behavior.
+        // silently skipped.
         if let Some(payload) = policies.get("rolePermissions") {
             if let Ok(map) =
                 serde_json::from_value::<HashMap<String, Vec<Permission>>>(payload.clone())
@@ -246,7 +244,7 @@ impl Engine for RbacEngine {
     }
 }
 
-/// The Go check: resolve the subject's transitive role closure, then
+/// The verdict: resolve the subject's transitive role closure, then
 /// look for any role whose permission table matches.
 fn evaluate(config: &Config, subject: &str, action: &str, resource: &str) -> bool {
     let roles = resolve_roles(config, subject, &mut HashSet::new());
@@ -265,7 +263,7 @@ fn evaluate(config: &Config, subject: &str, action: &str, resource: &str) -> boo
     false
 }
 
-/// The Go resolveRoles: the transitive closure of a subject's
+/// Role resolution: the transitive closure of a subject's
 /// memberships, with a visited set so a role cycle terminates. The
 /// subject itself counts as visited, so a user→role edge pointing back
 /// at the user name stops there.
@@ -285,8 +283,7 @@ fn resolve_roles(config: &Config, subject: &str, visited: &mut HashSet<String>) 
     result
 }
 
-/// The wildcard matcher, identical to the ACL engine's — the Go
-/// predecessor duplicates it per engine too.
+/// The wildcard matcher, identical to the ACL engine's.
 fn matches_pattern(pattern: &str, value: &str, wildcard: &str) -> bool {
     if pattern == wildcard {
         return true;

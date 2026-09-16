@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-ai"
-description = "AI model contract for RushWind: chat completions over OpenAI-compatible endpoints, extracted from go-wind-plugins/ai."
+description = "AI model contract for RushWind: chat completions over OpenAI-compatible endpoints."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

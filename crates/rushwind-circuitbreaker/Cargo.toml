@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-circuitbreaker"
-description = "Circuit-breaker contract for RushWind: State, the CircuitBreaker trait (Allow/MarkSuccess/MarkFailure/Execute/State/Close), extracted from go-wind-plugins/circuitbreaker."
+description = "Circuit-breaker contract for RushWind: State, the CircuitBreaker trait (Allow/MarkSuccess/MarkFailure/Execute/State/Close)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

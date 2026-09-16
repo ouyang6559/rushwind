@@ -1,11 +1,11 @@
-//! The error taxonomy for authorization, ported one-to-one from the Go
-//! predecessor's `authz/errors.go`.
+//! The error taxonomy for authorization: one variant per failure mode in
+//! the request path.
 //!
-//! Both variants carry the Go pair of an HTTP status (403) and a stable
+//! Both variants carry an HTTP status (403) and a stable
 //! machine-readable code, exposed through [`AuthzError::status`] and
 //! [`AuthzError::code`].
 //!
-//! The Go predecessor produces these in its middleware layer — the
+//! Engines produce these checks' inputs at the middleware layer — the
 //! engine methods themselves always succeed; the taxonomy rides along
 //! with the trait so a future middleware layer returns the same surface.
 
@@ -22,12 +22,12 @@ pub enum AuthzError {
 }
 
 impl AuthzError {
-    /// The HTTP status the Go taxonomy anchors this error to.
+    /// The HTTP status anchored to this error.
     pub const fn status(&self) -> u16 {
         403
     }
 
-    /// The stable machine-readable code, shared with the Go predecessor.
+    /// The stable machine-readable code for this error.
     pub const fn code(&self) -> &'static str {
         match self {
             Self::MissingAuthClaims => "AUTHZ_MISSING_CLAIMS",

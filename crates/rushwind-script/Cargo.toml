@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-script"
-description = "Script-engine contract for RushWind: the capability-split engine traits with the FullEngine aggregate, the engine pools and manager, the factory registry, and the local script-source framework (memory / file / static-tree / multi-strategy / cached / transform), extracted from the Go predecessor go-scripts."
+description = "Script-engine contract for RushWind: the capability-split engine traits with the FullEngine aggregate, the engine pools and manager, the factory registry, and the local script-source framework (memory / file / static-tree / multi-strategy / cached / transform)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

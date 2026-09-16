@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-oss"
-description = "Object storage contract for RushWind: put/get/delete over S3-compatible stores, extracted from go-wind-plugins/oss."
+description = "Object storage contract for RushWind: put/get/delete over S3-compatible stores."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

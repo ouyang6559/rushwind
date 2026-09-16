@@ -1,6 +1,5 @@
 //! Hystrix conformance: volume-threshold gating, error-rate tripping,
-//! sleep-window half-open, single-trial recovery, and close semantics
-//! — the Go `hystrix_test.go` shapes.
+//! sleep-window half-open, single-trial recovery, and close semantics.
 
 #![cfg(test)]
 

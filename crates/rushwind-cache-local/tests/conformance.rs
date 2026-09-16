@@ -1,7 +1,7 @@
 //! The cache contract conformance suite, shared by every engine: the
 //! same functions run against the local engine here and against the
-//! redis engine's live suite. Each function pins one slice of the Go
-//! `cache_test.go` semantics.
+//! redis engine's live suite. Each function pins one slice of the
+//! cache contract semantics.
 
 #![cfg(test)]
 
@@ -14,8 +14,7 @@ fn cache() -> LocalCache {
     LocalCache::new()
 }
 
-/// Set then Get round trips the bytes; a missing key reads as None —
-/// the Go ErrNotFound outcome as an Option.
+/// Set then Get round trips the bytes; a missing key reads as None.
 #[tokio::test]
 async fn set_then_get() {
     let cache = cache();

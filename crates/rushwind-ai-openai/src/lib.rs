@@ -5,28 +5,25 @@
 //!
 //! [`ai`]: rushwind_ai
 //!
-//! # The Go shapes, translated
+//! # Configuration resolutions
 //!
-//! The Go domain's three flavors (`openai`, `eino`, `langchaingo`)
-//! all build the same client from the same config — cloud means a
+//! The client is built from the config — cloud means a
 //! base URL, an api key and an optional organization; local means
-//! `http://host:port/v1` with a placeholder bearer. This engine
-//! follows the `openai` flavor's resolutions — Ollama gets the
-//! `none` bearer (eino used `ollama`; the runtime ignores it either
-//! way), default timeout 30 s — and takes [`Config::model_name`] as
-//! the per-request model fallback (the eino/langchaingo behavior;
-//! the raw go-openai client left the model entirely to the caller).
-//! The compose/chains/agents facades have no port: orchestration is
+//! `http://host:port/v1` with a placeholder bearer. Endpoint
+//! resolutions: Ollama gets the
+//! `none` bearer (the runtime ignores it), default timeout 30 s — and
+//! [`Config::model_name`] serves as
+//! the per-request model fallback when a request does not name one.
+//! Orchestration is
 //! the caller's business.
 //!
 //! # Beyond the sync surface
 //!
 //! [`ChatModel::chat`] covers the contract. The engine also streams
-//! server-sent events ([`OpenAiClient::chat_stream`] — the
-//! go-openai `CreateChatCompletionStream` surface: content deltas
-//! plus the finish reason; tool-call delta assembly is not carried
-//! over) and embeds text ([`OpenAiClient::embed`] — the langchaingo
-//! `Embedder` surface), both over the same endpoint resolution.
+//! server-sent events ([`OpenAiClient::chat_stream`]: content deltas
+//! plus the finish reason; tool-call delta assembly is not provided)
+//! and embeds text ([`OpenAiClient::embed`]), both over the same
+//! endpoint resolution.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -44,8 +41,7 @@ use rushwind_ai::{
 /// is empty.
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 
-/// The request timeout when [`Config::timeout_seconds`] is 0 — the
-/// Go `setHTTPClient` default.
+/// The request timeout when [`Config::timeout_seconds`] is 0.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
@@ -77,9 +73,8 @@ pub enum ChatStreamEvent {
 }
 
 impl OpenAiClient {
-    /// Builds an engine from the connection settings — the Go
-    /// `NewClient` factory, with the type switch folded into the
-    /// [`Config::model_type`] match.
+    /// Builds an engine from the connection settings, branching on
+    /// [`Config::model_type`].
     pub fn new(config: Config) -> Result<Self, AiError> {
         let (base_url, api_key, organization) = resolve_endpoint(&config)?;
         let timeout = if config.timeout_seconds == 0 {
@@ -296,7 +291,7 @@ impl ChatModel for OpenAiClient {
 }
 
 /// The endpoint/bearer/organization triple for a [`Config`] — pure
-/// so the Go-normalizing fallbacks (empty host, zero port, default
+/// so the normalizing fallbacks (empty host, zero port, default
 /// base URL) unit-test without a client.
 fn resolve_endpoint(config: &Config) -> Result<(String, String, Option<String>), AiError> {
     match config.model_type {

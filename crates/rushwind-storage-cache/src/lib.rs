@@ -1,5 +1,4 @@
-//! Cache-aside decorator for the [`Repository`] contract — go-crud's
-//! `cache/` horizontal layer.
+//! Cache-aside decorator for the [`Repository`] contract.
 //!
 //! Point reads (`get`) are cached with a TTL; concurrent misses on the same
 //! key are **coalesced into one backend load** (the singleflight pattern

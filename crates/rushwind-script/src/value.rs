@@ -1,11 +1,10 @@
 //! The value bridge between script runtimes and the host.
 //!
-//! Go's engine methods traffic in `any`; Rust needs one closed type, and
+//! Engine methods need one closed value type for the boundary, and
 //! this is it. Every engine crate maps its native values (Lua tables,
 //! Boa JS values, Starlark values, CEL results) into [`ScriptValue`] on
-//! the way out and back on the way in — the same bridging job
-//! `gluamapper`/`goja`-value-conversion do on the Go side, unified into
-//! one contract type.
+//! the way out and back on the way in — one bridging job,
+//! unified into one contract type.
 //!
 //! The shape is deliberately lossy: no functions, no userdata, no
 //! references into engine state. A script-side callable crossing the

@@ -1,7 +1,8 @@
 //! Wire conformance for the DTM engine, against a local axum mock
 //! dtmsvr: the trans-base JSON for each pattern, the branch query
 //! parameters, the registerBranch bodies, the prepare/submit/abort
-//! flows, and the error mappings — pinned against the Go dtmcli.
+//! flows, and the error mappings — pinned against the DTM protocol
+//! as spoken by the reference `dtmcli` client.
 
 use std::sync::{Arc, Mutex};
 
@@ -137,8 +138,8 @@ async fn saga_submit_carries_steps_payloads_and_go_tags() {
         "/order/create-compensate"
     );
     assert_eq!(recorded[0].body["steps"][1]["action"], "/stock/deduct");
-    // Payloads ride as parallel JSON-encoded strings, like Go's
-    // MustMarshalString.
+    // Payloads ride as parallel JSON-encoded strings, per the DTM
+    // protocol.
     assert_eq!(
         recorded[0].body["payloads"][0],
         serde_json::json!("{\"amount\":10}")
@@ -263,7 +264,7 @@ async fn msg_do_and_submit_queries_prepared_on_business_error() {
     let recorded = recorded.lock().unwrap();
     let paths: Vec<&str> = recorded.iter().map(|r| r.path.as_str()).collect();
     assert_eq!(paths, vec!["/prepare", "/check-prepared", "/submit"]);
-    // The query-prepared branch request: GET with the Go query set.
+    // The query-prepared branch request: GET with the protocol's query set.
     assert_eq!(recorded[1].method, "GET");
     let query = query_of(&recorded, 1);
     assert!(query.contains(&("gid".to_string(), "msg-003".to_string())));

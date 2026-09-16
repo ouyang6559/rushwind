@@ -1,5 +1,5 @@
-//! The InfluxDB engine for the [`Repository`] contract — go-crud's
-//! `influxdb/` module (InfluxQL over the 1.x HTTP API).
+//! The InfluxDB engine for the [`Repository`] contract
+//! (InfluxQL over the 1.x HTTP API).
 //!
 //! A time-series database has no primary keys, no arbitrary WHERE, and no
 //! cross-series ordering — the adapter closes that gap with the same

@@ -1,5 +1,5 @@
-//! Content-Type codec resolution — the port of Kratos's
-//! `CodecForRequest`/`ContentSubtype` pair as `DefaultRequestDecoder`
+//! Content-Type codec resolution — the `CodecForRequest`/`ContentSubtype`
+//! pair as `DefaultRequestDecoder`
 //! applies it to body routes.
 //!
 //! Resolution walks EVERY Content-Type header value (the reference's
@@ -16,7 +16,7 @@
 use axum::extract::Request;
 use axum::http::header;
 
-/// The codecs the reference deployment can resolve, mirroring the packages
+/// The codecs the reference deployment can resolve, matching the packages
 /// its binary imports (kratos `encoding/json`, `encoding/proto`, and the
 /// `encoding/form` urlencoded codec — empirically pinned against the
 /// reference 2026-09-14).
@@ -43,10 +43,10 @@ impl ResolvedCodec {
     }
 }
 
-/// The `internal/httputil.ContentSubtype` port: the raw slice between the
+/// The `internal/httputil.ContentSubtype` semantics: the raw slice between the
 /// first `/` and the first `;`, where the `;` is searched from the START of
 /// the value (verbatim upstream — a `;` positioned before the `/` yields
-/// the empty string). No case folding. Byte-indexed like Go's
+/// the empty string). No case folding. Byte-indexed like
 /// `strings.Index`; a slice landing inside a multi-byte character is
 /// dropped to empty rather than panicking.
 pub fn content_subtype(content_type: &str) -> &str {
@@ -85,8 +85,8 @@ pub fn resolve_codec(req: &Request, registered: &[&str]) -> Option<ResolvedCodec
     None
 }
 
-/// The value the failure message echoes: Go's `Header.Get` — the first
-/// Content-Type header value, or the empty string when absent.
+/// The value the failure message echoes: `Header.Get` semantics — the
+/// first Content-Type header value, or the empty string when absent.
 pub fn first_content_type(req: &Request) -> &str {
     req.headers()
         .get(header::CONTENT_TYPE)

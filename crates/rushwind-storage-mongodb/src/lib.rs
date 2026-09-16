@@ -1,5 +1,4 @@
-//! The MongoDB engine for the [`Repository`] contract — go-crud's
-//! `mongodb/` module.
+//! The MongoDB engine for the [`Repository`] contract.
 //!
 //! The [`translate`] module compiles the contract's filter tree into BSON
 //! predicate documents (SQL-wildcard `LIKE` family becomes escaped,

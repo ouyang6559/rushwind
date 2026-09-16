@@ -1,51 +1,46 @@
 //! ServiceComb service-center adapter for the RushWind registry
-//! contract — registration, heartbeats, and WebSocket watch, ported
-//! from `go-wind-plugins/registry/servicecomb` and speaking the same
-//! `/v4/{project}/registry` API its `sc-client` speaks.
+//! contract — registration, heartbeats, and WebSocket watch over the
+//! `/v4/{project}/registry` API.
 //!
 //! # Registration
 //!
-//! The microservice definition (go-wind framework identity included)
+//! The microservice definition (rush-wind framework identity included)
 //! is created-or-fetched on first register; older service centers
 //! answer a duplicate create with a 400 carrying the
 //! already-exists error code (400010), which falls back to the
 //! existence lookup — current ones answer 200 with the same id. The
-//! instance then registers under that service with the go-wind
+//! instance then registers under that service with the rush-wind
 //! endpoints, hostname, and version, its identity being the
 //! registration's id or a fresh random one, and a heartbeat task PUTs
-//! the instance every thirty seconds — the Go goroutine, which logs
-//! failures and keeps ticking, replicated.
+//! the instance every thirty seconds; failures are ignored and the
+//! loop keeps ticking.
 //!
 //! # Discovery
 //!
-//! [`Discovery::get_service`] is the Go `FindMicroServiceInstances`
-//! shape: the instance list for `{appId}/{serviceName}` under the
-//! configured environment, rebuilt with the Go adapter's quirk that
+//! [`Discovery::get_service`] returns the instance list for
+//! `{appId}/{serviceName}` under the
+//! configured environment, rebuilt with the quirk that
 //! the instance version field carries the **service** id. The find
 //! path serves a view service-center caches for roughly thirty
 //! seconds, so a registration or deregistration lands in discovery
 //! only after that cache's next refresh. No
-//! health-check object is attached to instances — as in the Go
-//! registration — so service-center never expires them; the
+//! health-check object is attached to instances, so service-center
+//! never expires them; the
 //! heartbeats are belt-and-braces.
 //!
-//! [`Discovery::watch`] first re-queries the target's instances (the
-//! Go watcher's dependency-establishment call), then opens the
+//! [`Discovery::watch`] first re-queries the target's instances, then
+//! opens the
 //! WebSocket watcher on the registry's own service id — the
 //! per-process identity set at register time — and forwards each
-//! matching event as a one-instance snapshot, the Go watcher's
-//! per-event delivery. A broken stream re-dials with exponential
-//! backoff capped at thirty seconds, the Go startBackOff shape.
+//! matching event as a one-instance snapshot. A broken stream re-dials
+//! with exponential
+//! backoff capped at thirty seconds.
 //!
-//! # Divergences from the Go adapter
+//! # Behavior notes
 //!
-//! - The self service id is stored on the fetch-existing path too;
-//!   the Go global stays empty when the service already existed,
-//!   breaking its own watch.
-//! - A stopped watcher drops its events (the Go Stop closes the
-//!   channel its callback still sends to).
-//! - The `X-ConsumerId` header is sent empty where the Go code
-//!   forwards the (often empty) consumer id; the Properties bag is
+//! - The self service id is stored on the fetch-existing path too.
+//! - A stopped watcher drops its events.
+//! - The `X-ConsumerId` header is sent empty; the Properties bag is
 //!   parsed and dropped on the rebuild — no Rust [`Instance`] field.
 //!
 //! # Testing
@@ -74,7 +69,7 @@ const HEARTBEAT_SECS: u64 = 30;
 const WATCH_BACKOFF_CAP_SECS: u64 = 30;
 /// The default tenancy project segment of the registry path.
 const DEFAULT_PROJECT: &str = "default";
-/// The go-wind framework identity the Go adapter declares.
+/// The framework identity the registration declares.
 const FRAMEWORK_NAME: &str = "wind";
 const FRAMEWORK_VERSION: &str = "v2";
 /// The service-center error code for a duplicate microservice.
@@ -104,7 +99,8 @@ pub struct ServicecombRegistry {
     inner: Arc<Inner>,
 }
 
-/// Options mirroring the Go adapter's environment-derived surface.
+/// Options for the service-center adapter, environment-derived by
+/// default.
 #[derive(Debug, Clone)]
 pub struct ServicecombOptions {
     /// The service-center application id. Default: the
@@ -126,8 +122,8 @@ impl Default for ServicecombOptions {
 
 impl ServicecombRegistry {
     /// Connects to service-center at `addr` (e.g.
-    /// `http://127.0.0.1:30100`) with the Go adapter's
-    /// environment-derived options.
+    /// `http://127.0.0.1:30100`) with environment-derived default
+    /// options.
     pub fn connect(addr: &str) -> Result<Self, RegistryError> {
         Self::connect_with(addr, ServicecombOptions::default())
     }
@@ -151,7 +147,7 @@ impl ServicecombRegistry {
 
     /// Constructs from the bootstrap factory's settings wire shape:
     /// `addr` (required), `app_id` and `environment` (default to the
-    /// Go adapter's environment variables, then their fallbacks).
+    /// standard environment variables, then their fallbacks).
     pub fn from_settings(settings: serde_json::Value) -> Result<Self, RegistryError> {
         let settings: ServicecombSettings = serde_json::from_value(settings)
             .map_err(|e| RegistryError::Failed(format!("settings parse: {e}")))?;
@@ -169,16 +165,15 @@ impl ServicecombRegistry {
         self.inner.registry_root()
     }
 
-    /// The Go `httpDo`: default headers under the caller's.
+    /// Issues a request with the default headers under the caller's.
     fn request(&self, method: reqwest::Method, url: String) -> reqwest::RequestBuilder {
         self.inner.request(method, url)
     }
 
     /// Creates the owning microservice when absent and returns its id
-    /// — the Go register-then-existence pair. The id is stored as the
-    /// watch target on both paths (the Go global stays empty when the
-    /// service pre-existed, breaking its own watch; this port keeps
-    /// the identity it just resolved).
+    /// — create first, then the existence lookup on a duplicate
+    /// rejection. The id is stored as the
+    /// watch target on both paths, keeping the identity just resolved.
     async fn ensure_service(&self) -> Result<String, RegistryError> {
         let url = format!("{}/microservices", self.registry_root());
         let payload = serde_json::json!({
@@ -212,8 +207,8 @@ impl ServicecombRegistry {
             return Ok(service_id);
         }
         if status == 400 && body.contains(ERR_SERVICE_ALREADY_EXISTS) {
-            // The older service centers reject a duplicate create; the
-            // Go adapter resolves through the existence lookup.
+            // The older service centers reject a duplicate create;
+            // resolve through the existence lookup.
             let service_id = self.resolve_service_id().await?;
             *self
                 .inner
@@ -227,7 +222,7 @@ impl ServicecombRegistry {
         )))
     }
 
-    /// The Go adapter registers ONE microservice per process named
+    /// ONE microservice is registered per process, named
     /// after the first registration's service name; the hints keep
     /// that name/version available for the create call.
     fn service_name_hint(&self) -> String {
@@ -248,7 +243,7 @@ impl ServicecombRegistry {
             .unwrap_or_else(|| "1.0.0".to_string())
     }
 
-    /// The Go `GetMicroServiceID`: the existence lookup.
+    /// The existence lookup for an already-created microservice.
     async fn resolve_service_id(&self) -> Result<String, RegistryError> {
         let url = format!(
             "{}/existence?type=microservice&appId={}&serviceName={}&version={}&env={}",
@@ -305,7 +300,7 @@ impl Registrar for ServicecombRegistry {
         registration: Registration,
     ) -> BoxFuture<'a, Result<RegistrationHandle, RegistryError>> {
         Box::pin(async move {
-            // The Go adapter names the process's microservice after
+            // The process's microservice is named after
             // its first registration; remember the name and version
             // for the create call.
             {
@@ -369,8 +364,8 @@ impl Registrar for ServicecombRegistry {
                 )));
             }
 
-            // The Go heartbeat goroutine: a PUT per thirty seconds;
-            // failures are logged and the loop continues.
+            // Heartbeat: a PUT per thirty seconds;
+            // failures are ignored and the loop continues.
             let task_inner = Arc::clone(&self.inner);
             let heartbeat_service_id = service_id.clone();
             let heartbeat_instance_id = instance_id.clone();
@@ -403,7 +398,7 @@ impl Registrar for ServicecombRegistry {
         registration: Registration,
     ) -> BoxFuture<'a, Result<(), RegistryError>> {
         Box::pin(async move {
-            // The Go deregistration resolves the service id fresh.
+            // Deregistration resolves the service id fresh.
             let service_id = self.resolve_service_id().await?;
             let instance_id = registration.instance.id.clone();
             if let Some(task) = self
@@ -446,7 +441,7 @@ impl Discovery for ServicecombRegistry {
         Box::pin(async move {
             let instances =
                 find_instances(&self.inner, "", &self.inner.app_id, service_name).await?;
-            // The Go rebuild: version carries the SERVICE id, name the
+            // The rebuild quirk: version carries the SERVICE id, name the
             // queried name.
             Ok(instances
                 .into_iter()
@@ -478,7 +473,7 @@ impl Discovery for ServicecombRegistry {
                     "servicecomb watch: the registry has not registered a service".to_string(),
                 ));
             };
-            // The Go watcher's dependency-establishment query.
+            // The dependency-establishment query.
             find_instances(
                 &self.inner,
                 &self_service_id,
@@ -502,8 +497,7 @@ impl Discovery for ServicecombRegistry {
 }
 
 /// The ServiceComb-backed [`Watcher`]: per-instance events from the
-/// WebSocket watch, each delivered as a one-instance snapshot — the
-/// Go watcher's per-event delivery.
+/// WebSocket watch, each delivered as a one-instance snapshot.
 struct ServicecombWatcher {
     signal: Option<tokio::sync::mpsc::UnboundedReceiver<Instance>>,
     stopped: bool,
@@ -539,7 +533,7 @@ impl Drop for ServicecombWatcher {
 
 /// The watch loop: dial the WebSocket watcher, forward every matching
 /// event, and re-dial with a doubling backoff capped at thirty
-/// seconds after every break — the Go startBackOff shape. The loop
+/// seconds after every break. The loop
 /// ends when its watcher is gone.
 async fn watch_loop(
     inner: Arc<Inner>,
@@ -598,7 +592,7 @@ async fn watch_loop(
     }
 }
 
-/// The Go `FindMicroServiceInstances`: the instance list for the
+/// The instance list for the
 /// application/service pair under the environment.
 async fn find_instances(
     inner: &Inner,
@@ -647,7 +641,7 @@ async fn find_instances(
 }
 
 /// The heartbeat loop: a PUT per thirty-second tick; failures are
-/// swallowed, as the Go goroutine logs-and-continues.
+/// swallowed.
 async fn heartbeat_loop(inner: Arc<Inner>, service_id: String, instance_id: String) {
     let mut ticker = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
     ticker.tick().await;
@@ -663,8 +657,7 @@ async fn heartbeat_loop(inner: Arc<Inner>, service_id: String, instance_id: Stri
     }
 }
 
-/// A fresh random instance identifier — 16 CSPRNG bytes, hex-formatted
-/// — standing in for the Go adapter's uuid v4.
+/// A fresh random instance identifier — 16 CSPRNG bytes, hex-formatted.
 fn random_instance_id() -> String {
     let mut bytes = [0u8; 16];
     let _ = getrandom::fill(&mut bytes);
@@ -690,11 +683,11 @@ fn urlencode(value: &str) -> String {
 pub struct ServicecombSettings {
     /// The service-center address (e.g. `http://127.0.0.1:30100`).
     pub addr: String,
-    /// The application id. Default: the Go adapter's environment
-    /// variable, then `default`.
+    /// The application id. Default: the `CAS_APPLICATION_NAME`
+    /// environment variable, then `default`.
     pub app_id: Option<String>,
-    /// The environment. Default: the Go adapter's environment
-    /// variable, then empty.
+    /// The environment. Default: the `CAS_ENVIRONMENT_ID`
+    /// environment variable, then empty.
     pub environment: Option<String>,
 }
 

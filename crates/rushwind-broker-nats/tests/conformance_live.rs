@@ -24,8 +24,7 @@ async fn broker() -> NatsBroker {
 }
 
 /// The round trip: subscribe a wildcard subject, publish onto a
-/// matching subject, and receive the payload — payload-only, as the
-/// Go engine publishes.
+/// matching subject, and receive the payload — payload-only.
 #[tokio::test]
 async fn publish_subscribes_and_delivers() {
     let broker = broker().await;

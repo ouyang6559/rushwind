@@ -1,8 +1,8 @@
 // RushWind storage query contract — the wire face of `rushwind-storage`.
 //
-// Authored to mirror the Go predecessor go-crud's `api/` contract: the same
-// operator taxonomy (which itself descends from Django ORM field lookups),
-// the same FilterExpr group shape, the same pagination oneof. This file is
+// The contract defines the operator taxonomy (descending from Django ORM
+// field lookups), the FilterExpr group shape, and the pagination oneof.
+// This file is
 // the single source of truth for the wire format; the Rust types in
 // `rushwind-storage-proto` are generated from it (prost + pbjson for the
 // protojson JSON mapping), never hand-written.
@@ -15,7 +15,7 @@ package rushwind.storage.v1;
 // FilterCondition; protox compiles the well-known types itself.
 import "google/protobuf/struct.proto";
 
-// The requested projection — go-crud's own FieldMask message (paths list),
+// The requested projection — a custom FieldMask message (paths list),
 // not google.protobuf.FieldMask, so the protojson form is
 // `{"paths": ["id", "name"]}`.
 message FieldMask {
@@ -78,8 +78,8 @@ message FilterCondition {
   // Arbitrary JSON scalar in protojson encoding; native JSON numbers and
   // strings are both accepted where the engine's column kinds allow.
   google.protobuf.Value value = 3;
-  repeated google.protobuf.Value values = 4;  // go-crud extensions with no relational equivalent; rejected by the Rust
-  // core with `Unsupported`.
+  repeated google.protobuf.Value values = 4;  // Extensions with no relational
+  // equivalent; rejected by the core with `Unsupported`.
   string date_part = 5;
   string json_path = 6;
 }
@@ -97,8 +97,7 @@ message Sorting {
   SortDirection direction = 2;
 }
 
-// The three paging strategies and the no-paging escape hatch, mirroring
-// go-crud's PaginationRequest.
+// The three paging strategies and the no-paging escape hatch.
 message PageBasedPagination {
   int32 page = 1;
   int32 page_size = 2;

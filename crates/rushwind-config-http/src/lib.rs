@@ -1,13 +1,12 @@
-//! HTTP config source for the RushWind configuration contract — the
-//! Go `go-wind-plugins/config/http` ported onto reqwest.
+//! HTTP config source for the RushWind configuration contract, over reqwest.
 //!
-//! A load is a GET of the key treated as a **full URL** (the Go
-//! resolveKey: the caller's key wins, the configured default URL
+//! A load is a GET of the key treated as a **full URL** (the caller's
+//! key wins, the configured default URL
 //! covers an empty key). 2xx responses carry the body as the value;
 //! 404 is the contract's `Ok(None)` "absent" answer; anything else is
 //! an error.
 //!
-//! Watch is poll-based — the Go adapter's 30-second default cadence:
+//! Watch is poll-based, with a 30-second default cadence:
 //! a background task re-fetches the URL and emits only when the body
 //! changed. [`ConfigOptions::poll_interval`] scales it.
 
@@ -19,7 +18,7 @@ use std::time::Duration;
 use rushwind_config::{BoxFuture, ConfigError, Source, ValueStream};
 use tokio::sync::mpsc;
 
-/// The engine's settings — the Go `options`.
+/// The engine's settings.
 #[derive(Debug, Clone)]
 pub struct HttpOptions {
     /// The default URL used when a load passes an empty key. A load
@@ -27,8 +26,7 @@ pub struct HttpOptions {
     pub url: String,
     /// The request method. Default GET.
     pub method: String,
-    /// The poll cadence for the watch. Default 30 s — the Go
-    /// `defaultPollInterval`.
+    /// The poll cadence for the watch. Default 30 s.
     pub poll_interval: Duration,
     /// The per-request timeout. Default 10 s.
     pub request_timeout: Duration,
@@ -53,7 +51,8 @@ pub struct HttpSource {
 
 impl HttpSource {
     /// Builds the engine; fails when no default URL is configured and
-    /// loads would have to guess — the Go "url invalid" guard.
+    /// loads would have to guess — an empty default URL is a
+    /// construction error.
     pub fn new(options: HttpOptions) -> Result<Self, ConfigError> {
         if options.url.is_empty() {
             return Err(ConfigError::Failed("http: url invalid".to_string()));
@@ -133,8 +132,7 @@ impl Source for HttpSource {
     }
 
     /// Poll-mode watch: a background task re-fetches the default URL
-    /// every cadence tick and pushes the body when it changed — the
-    /// Go adapter's polling `ValueWatcher`.
+    /// every cadence tick and pushes the body when it changed.
     fn watch_value<'a>(
         &'a self,
         key: &'a str,

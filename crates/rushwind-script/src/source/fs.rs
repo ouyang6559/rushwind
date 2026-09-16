@@ -1,19 +1,18 @@
-//! The static-tree script source — the Go `fs.FS` source's shape.
+//! The static-tree script source.
 //!
-//! The Go source wraps any `io/fs.FS` implementation (embedded assets,
-//! zip archives, real directories) behind read-only lookups. Rust has
-//! no standard virtual-filesystem trait, so the port defines the
-//! narrowest one that preserves the pattern — [`StaticTree`], a
-//! caller-supplied immutable name-to-content lookup — and the source
+//! The source reads through [`StaticTree`], a
+//! caller-supplied immutable name-to-content lookup —
+//! Rust has
+//! no standard virtual-filesystem trait, so the contract defines the
+//! narrowest one that preserves the pattern — and the source
 //! contributes the prefix joining. An embedded-asset source is a
 //! `StaticTree` over `include_str!` maps; a zip-backed one is a
 //! `StaticTree` over the caller's archive reader; the tree lives with
 //! the caller and the source adds no lifecycle.
 //!
-//! Divergence from the Go predecessor: the nil-fs constructor check is
-//! dropped (`Arc<dyn StaticTree>` cannot be null), and there is no
-//! watch capability — the Go source is reader-only too, because the
-//! trees it wraps are immutable.
+//! There is no
+//! watch capability — the trees are immutable, so the source is
+//! reader-only.
 
 use std::sync::Arc;
 
@@ -171,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn prefixes_normalize_exactly_like_the_predecessor() {
+    fn prefixes_normalize_predictably() {
         let tree = map_tree(&[]);
         let cases: [(&str, &str); 4] = [("/a/", "a/"), ("b", "b/"), ("c/", "c/"), ("/", "")];
         for (input, expected) in cases {

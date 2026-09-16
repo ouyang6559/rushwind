@@ -46,7 +46,7 @@ async fn load_reads_the_url_body() {
     assert_eq!(value, Some(b"db-password".to_vec()));
 }
 
-/// An empty key with no configured default fails the load — the Go
+/// An empty key with no configured default fails the load — the
 /// "url invalid" guard at the call site.
 #[tokio::test]
 async fn missing_url_fails_the_engine() {

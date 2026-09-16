@@ -1,4 +1,4 @@
-//! The authorization bridge — the Go `authz` middleware for the HTTP
+//! The authorization bridge for the HTTP
 //! family, fulfilled with the [`Engine`] contract.
 //!
 //! One wrapped router evaluates one action/resource permission point:
@@ -7,7 +7,7 @@
 //! answers `403 / PERMISSION_DENIED`. No claims on the request means the
 //! authn layer did not run — that is `401`, not `403`.
 //!
-//! This is the dynamic-RBAC shape the Go admin runs: policies live in
+//! This is the dynamic-RBAC shape: policies live in
 //! the store, the application loads them into the engine with
 //! [`Engine::set_policies`] at startup and on every policy change (the
 //! engine's interior mutability makes the reset invisible to live
@@ -15,7 +15,7 @@
 //! point.
 //!
 //! The project axis defaults to empty; [`with_authorization_claim`]
-//! reads it from a string claim (the Go admin puts the tenant there).
+//! reads it from a string claim (typically the tenant).
 
 use std::sync::Arc;
 
@@ -65,8 +65,8 @@ pub fn with_authorization_for(
 }
 
 /// Wraps the router with one permission-point check whose project comes
-/// from a string claim of the request's credential (the Go admin puts
-/// the tenant there) — an absent claim evaluates under the empty
+/// from a string claim of the request's credential (typically
+/// the tenant) — an absent claim evaluates under the empty
 /// project.
 pub fn with_authorization_claim(
     router: axum::Router,
@@ -121,8 +121,8 @@ async fn authorize(
             REASON_PERMISSION_DENIED,
             "the subject is not authorized for this action",
         )),
-        // The taxonomy anchors its errors to 403 — the Go middleware
-        // denies on engine failure too; the taxonomy's stable code rides
+        // The taxonomy anchors its errors to 403 — engine failures
+        // deny too; the taxonomy's stable code rides
         // as the reason so the log can tell the two denials apart.
         Err(error) => Err(HttpError::new(
             axum_code_for(error.status()),

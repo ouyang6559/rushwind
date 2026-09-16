@@ -1,6 +1,5 @@
 //! Token-bucket conformance: burst consumption, refill pacing, Wait
-//! blocking, close semantics, and the invalid-config guard — the Go
-//! `tokenbucket_test.go` shapes.
+//! blocking, close semantics, and the invalid-config guard.
 
 #![cfg(test)]
 
@@ -40,8 +39,7 @@ async fn wait_acquires_after_refill() {
     );
 }
 
-/// An invalid configuration (zero rate) fails construction — the Go
-/// ErrInvalidConfig.
+/// An invalid configuration (zero rate) fails construction.
 #[test]
 fn invalid_config_fails() {
     assert!(TokenBucket::new(TokenBucketOptions {
@@ -62,7 +60,7 @@ fn invalid_config_fails() {
 }
 
 /// Close rejects Allow immediately and fails Wait with Limited —
-/// the Go close semantics.
+/// the close semantics.
 #[tokio::test]
 async fn close_rejects_and_fails_wait() {
     let limiter = limiter(10.0, 1.0);

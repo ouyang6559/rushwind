@@ -1,5 +1,4 @@
-//! Basic-auth engine for the RushWind authentication contract, ported
-//! from `go-wind-plugins/security/authn/basicauth`.
+//! Basic-auth engine for the RushWind authentication contract.
 //!
 //! Credentials follow RFC 7617:
 //!
@@ -115,10 +114,9 @@ impl Authenticator for BasicAuthAuthenticator {
     }
 
     fn create_identity(&self, claims: &AuthClaims) -> Result<String, AuthnError> {
-        // The Go mint requires a subject claim and a table entry.
-        // Divergence: its two plain Go errors are folded into the
-        // taxonomy as InvalidSubject (missing claim) and MissingKeyFunc
-        // (no table entry) — the observable outcome, failure, is
+        // Minting requires a subject claim and a table entry. A missing
+        // claim reports InvalidSubject and a missing table entry reports
+        // MissingKeyFunc — the observable outcome, failure, is
         // unchanged.
         let username = claims.get_subject().unwrap_or_default();
         if username.is_empty() {
@@ -133,7 +131,7 @@ impl Authenticator for BasicAuthAuthenticator {
 }
 
 impl BasicAuthAuthenticator {
-    /// The Go validate: validator callback first, else the static table.
+    /// Validation: validator callback first, else the static table.
     fn validate(&self, username: &str, password: &str) -> bool {
         if let Some(validator) = &self.options.validator {
             return validator(username, password);
@@ -239,7 +237,7 @@ mod tests {
             auth.authenticate(&[]).unwrap_err(),
             AuthnError::MissingBearerToken
         );
-        // Bearer where Basic is expected: the Go engine's extraction
+        // Bearer where Basic is expected: extraction
         // fails, and the collapse applies.
         let bearer = vec![(
             HEADER_AUTHORIZE.to_string(),

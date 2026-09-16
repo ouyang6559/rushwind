@@ -5,23 +5,21 @@
 //!
 //! - [`MultiStrategy::Fallback`] walks the sub-sources in order and
 //!   the first successful load wins — the primary-plus-local-backup
-//!   shape. All failures join into one error, the Go `errors.Join`
+//!   shape. All failures join into one error, a joined
 //!   rendering.
 //! - [`MultiStrategy::FirstOk`] races every sub-source's load
 //!   concurrently and the first success wins — the low-latency
-//!   mirrored-read shape. The Go version spawns one goroutine per
-//!   sub-source; the port races the sub-load futures inside this
+//!   mirrored-read shape. The sub-load futures race inside this
 //!   call's own future with no task boundaries, the orchestrator
-//!   doctrine, and a winner's remaining racers are dropped (the Go
-//!   `cancel()` shape).
+//!   doctrine, and a winner's remaining racers are dropped.
 //!
 //! The watch capability delegates to the first sub-source whose watch
 //! comes up; [`ScriptError::CapabilityNotSupported`] answers —
-//! sub-sources that cannot watch — are skipped, matching the Go
-//! capability-assertion walk, and when every candidate fails the
+//! sub-sources that cannot watch — are skipped, matching the
+//! capability-probe walk, and when every candidate fails the
 //! failures join.
 //!
-//! Divergence from the Go predecessor: `Close` is `Drop` — the
+//! `Close` is `Drop` — the
 //! sub-source arcs release with the aggregator.
 
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -140,8 +138,8 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
 
-    /// The Go fakeSource: a scripted answer, an optional latency, a
-    /// load counter, and a drop flag standing in for the Go `closed`
+    /// A fake source: a scripted answer, an optional latency, a
+    /// load counter, and a drop flag standing in for closed
     /// bookkeeping.
     struct FakeSource {
         code: Option<&'static str>,

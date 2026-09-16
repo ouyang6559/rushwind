@@ -1,5 +1,4 @@
-//! Datadog engine for the Rust metrics contract, ported from
-//! `go-wind-plugins/metrics/datadog`.
+//! Datadog engine for the Rust metrics contract.
 //!
 //! Metrics are rendered as **DogStatsD line protocol** and sent over
 //! UDP to a local Datadog Agent, which forwards them to Datadog's
@@ -9,7 +8,7 @@
 //! <namespace>.<name>:<value>|<type>|#<tag:k:v,...>|@<rate>
 //! ```
 //!
-//! Counter lines carry `|c` with the value cast to integer — the Go
+//! Counter lines carry `|c` with the value cast to integer —
 //! `int64(value)` truncation, kept. Histograms carry `|h`, gauges
 //! `|g`, both with the full float. Tags follow the contract's
 //! canonical (sorted) label order. The sample-rate suffix `|@rate`
@@ -19,15 +18,14 @@
 //! silently, which is the DogStatsD contract, not a bug. Buffering
 //! ([`DogStatsDOptions::with_buffer_size`]) batches up to N lines into
 //! one datagram, flushed on overflow, on the flush period, and on
-//! drop — the Go client's batching shape.
+//! drop.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `datadog-go/v5/statsd` client library | the line protocol hand-rolled — a UDP socket and string framing is the whole driver surface, the ClickHouse-engine doctrine |
-//! | tag order random (map iteration) | tags sorted, the contract's canonical order |
-//! | `Close()` flushes and closes | `Drop` |
+//! - the line protocol is hand-rolled — a UDP socket and string framing
+//!   is the whole driver surface
+//! - tags are sorted, the contract's canonical order
+//! - shutdown rides `Drop`, which flushes and closes
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -39,10 +37,10 @@ use std::time::Duration;
 
 use rushwind_metrics::{canonical_labels, Metrics};
 
-/// The default DogStatsD agent address, the Go default.
+/// The default DogStatsD agent address.
 pub const DEFAULT_ADDRESS: &str = "127.0.0.1:8125";
 
-/// The default flush period for buffered sends, the Go default.
+/// The default flush period for buffered sends.
 pub const DEFAULT_FLUSH_PERIOD: Duration = Duration::from_millis(100);
 
 /// Builder for [`DatadogMetrics`].
@@ -55,7 +53,7 @@ pub struct DogStatsDOptions {
 }
 
 impl Default for DogStatsDOptions {
-    /// The Go defaults: loopback agent, no namespace, no buffering,
+    /// The defaults: loopback agent, no namespace, no buffering,
     /// every sample sent.
     fn default() -> Self {
         Self {
@@ -246,7 +244,7 @@ impl Drop for DatadogMetrics {
 
 impl Metrics for DatadogMetrics {
     fn counter(&self, name: &str, value: f64, labels: &[(&str, &str)]) {
-        // The Go client takes int64 counters: the same truncation.
+        // Counters carry integer values: truncated.
         let integer = value as i64;
         self.send(self.render(name, &integer.to_string(), "c", labels));
     }
@@ -260,7 +258,7 @@ impl Metrics for DatadogMetrics {
     }
 }
 
-/// The Go statsd client's float formatting: shortest representation
+/// Float formatting: shortest representation
 /// that round-trips (`42`, `42.5`, `0.042`).
 fn format_float(value: f64) -> String {
     let mut formatted = format!("{value}");

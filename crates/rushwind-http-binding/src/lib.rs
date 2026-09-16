@@ -33,11 +33,11 @@
 //!   the auth middleware's verified claim bag).
 //!
 //! The reference deployment's registered codec subtypes are NOT baked in:
-//! the assembly passes its registered set to [`bindgate`], mirroring
+//! the assembly passes its registered set to [`bindgate`], matching
 //! whichever codec packages the reference binary imports.
 //!
 //! Known dormant divergences (the caller's compatibility spec owns the
-//! register): the binary wire-format body decode has no port here
+//! register): the binary wire-format body decode is not implemented here
 //! (pass-through), and `form_urlencoded` parses lossily where the
 //! reference's `url.ParseQuery` errors on malformed escapes.
 //!

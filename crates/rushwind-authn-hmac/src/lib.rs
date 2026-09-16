@@ -1,5 +1,4 @@
-//! HMAC engine for the Rust authentication contract, ported from
-//! `go-wind-plugins/security/authn/hmac`.
+//! HMAC engine for the Rust authentication contract.
 //!
 //! Credentials are HMAC-SHA256 request signatures riding as bearer
 //! tokens:
@@ -28,9 +27,9 @@
 //! integrity (TLS) and per-endpoint body signing where replay or
 //! tampering matters.
 //!
-//! Divergence: the Go engine's two mint-time plain errors (missing
-//! subject, missing secret) are folded into the taxonomy as
-//! [`AuthnError::InvalidSubject`] and [`AuthnError::MissingKeyFunc`] —
+//! Design note: minting reports a missing subject as
+//! [`AuthnError::InvalidSubject`] and an unresolvable secret as
+//! [`AuthnError::MissingKeyFunc`] instead of plain errors —
 //! the observable outcome, failure, is unchanged.
 //!
 //! [`resolver`]: HmacOptions::with_secret_resolver
@@ -50,7 +49,7 @@ use sha2::Sha256;
 /// for key rotation and per-key secrets held in an external source.
 pub type SecretResolver = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-/// The default clock-skew window: 5 minutes, the Go default.
+/// The default clock-skew window: 5 minutes.
 const DEFAULT_MAX_SKEW: Duration = Duration::from_secs(300);
 
 /// Builder for [`HmacAuthenticator`].
@@ -108,7 +107,7 @@ impl HmacAuthenticator {
     }
 
     /// The effective secret source: resolver callback first, else the
-    /// static table — the Go getSecret order.
+    /// static table.
     fn resolve_secret(&self, key_id: &str) -> Option<String> {
         if let Some(resolver) = &self.options.resolver {
             return resolver(key_id);
@@ -117,7 +116,7 @@ impl HmacAuthenticator {
     }
 
     /// The effective skew window: the configured value when positive,
-    /// else the 5-minute default — the Go getMaxSkew.
+    /// else the 5-minute default.
     fn effective_max_skew(&self) -> Duration {
         self.options
             .max_skew
@@ -179,9 +178,8 @@ impl Authenticator for HmacAuthenticator {
     }
 
     fn create_identity(&self, claims: &AuthClaims) -> Result<String, AuthnError> {
-        // The Go mint, with its plain errors folded into the taxonomy:
-        // a missing subject is InvalidSubject, an unresolvable secret is
-        // MissingKeyFunc.
+        // Minting maps a missing subject to InvalidSubject and an
+        // unresolvable secret to MissingKeyFunc.
         let key_id = claims.get_subject().unwrap_or_default();
         if key_id.is_empty() {
             return Err(AuthnError::InvalidSubject);
@@ -208,7 +206,7 @@ fn unix_now() -> i64 {
         .unwrap_or(0)
 }
 
-/// Lowercase hex encoding, the Go `hex.EncodeToString`.
+/// Lowercase hex encoding.
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -219,9 +217,8 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
-/// Lowercase hex decoding, the Go `hex.DecodeString`; `None` on any
-/// non-hex character, uppercase hex letters (which the Go decoder
-/// rejects), or odd length.
+/// Lowercase hex decoding; `None` on any
+/// non-hex character, uppercase hex letters, or odd length.
 fn hex_decode(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 || s.bytes().any(|b| b.is_ascii_uppercase()) {
         return None;
@@ -364,7 +361,7 @@ mod tests {
     fn missing_configuration_is_unauthenticated() {
         // A fresh timestamp passes the skew window; the missing secret
         // is what rejects. (A stale timestamp would hit TokenExpired
-        // first — the Go engine checks freshness before secrets.)
+        // first — freshness is checked before secrets.)
         let auth = HmacAuthenticator::new(HmacOptions::new());
         let ts = unix_now().to_string();
         assert_eq!(

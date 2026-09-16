@@ -1,6 +1,6 @@
 //! The filter expression tree.
 //!
-//! Mirrors go-crud's `FilterExpr`/`FilterCondition` proto vocabulary: leaf
+//! The `FilterExpr`\/`FilterCondition` vocabulary: leaf
 //! conditions pair a field with one operator and its operand values, and
 //! leaves compose through `AND`/`OR` groups nesting to arbitrary depth.
 //! Engines translate the tree into their native predicate language — the
@@ -12,7 +12,7 @@ use crate::schema::{ColumnKind, Schema};
 use crate::value::Value;
 use std::cmp::Ordering;
 
-/// A comparison operator, the Rust spelling of go-crud's operator table.
+/// A comparison operator.
 ///
 /// String-pattern operators (`Like`, `Ilike`, `Contains`, `StartsWith`,
 /// `EndsWith`) use SQL semantics: `%` matches any sequence and `_` matches

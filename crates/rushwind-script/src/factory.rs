@@ -1,8 +1,7 @@
 //! The process-wide engine factory registry, keyed by engine name.
 //!
-//! The Go predecessor keeps a package-level `map[Type]FactoryFunc`
-//! guarded by an `RWMutex`; the port follows the encoding domain's
-//! `OnceLock<RwLock<HashMap<…>>>` registry shape with the same
+//! The registry follows the encoding domain's
+//! `OnceLock<RwLock<HashMap<…>>>` shape with consistent
 //! semantics: registration under a taken name fails, lookup and
 //! listing are lock-shared, and the type-based constructors consult
 //! the registry through [`new_script_engine`].

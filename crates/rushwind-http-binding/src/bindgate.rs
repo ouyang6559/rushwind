@@ -1,4 +1,4 @@
-//! The pre-middleware bind layer — the port of the section of the
+//! The pre-middleware bind layer — the section of the
 //! Kratos-generated leaf handler that runs BEFORE `ctx.Middleware`
 //! executes the auth chain: `ctx.Bind` (body decode via the resolved
 //! codec) and `ctx.BindQuery` (query parameters). The assembly mounts
@@ -14,12 +14,12 @@
 //!   parser prose — the differential rig shape-compares this class).
 //! * x-www-form-urlencoded — the form codec: urlencoded pairs fed through
 //!   the same populate machinery as the query binder.
-//! * proto — pass-through, unvalidated and unbound: no wire-format port
+//! * proto — pass-through, unvalidated and unbound: no wire-format decoder
 //!   in this crate (the dormant divergence the caller's compat spec
 //!   registers).
 //!
 //! A body route whose Content-Type resolves to nothing answers 400
-//! `unregister Content-Type: %s` with `%s` = Go's `Header.Get` (the first
+//! `unregister Content-Type: %s` with `%s` = `Header.Get` (the first
 //! value, empty when absent) — empirically pinned against the reference:
 //! this check fires even for an empty body, ahead of the auth layer.
 //!

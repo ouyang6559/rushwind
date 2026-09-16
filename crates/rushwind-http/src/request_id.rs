@@ -1,4 +1,4 @@
-//! The request-id middleware — the Go `requestid`.
+//! The request-id middleware.
 //!
 //! Echoes the inbound `x-request-id` or mints one from the OS CSPRNG
 //! (32 hex chars, the same shape the session engine's IDs use), inserts

@@ -2,7 +2,7 @@
 //! container. Compile-gated behind the `live` feature; the agent
 //! address comes from `CONSUL_HTTP_ADDR` (a full base URL). These
 //! tests pin the interoperability contract where it matters most — a
-//! real consul serving the same view a Go-side consumer would see.
+//! real consul serving the same view any external consumer would see.
 
 #![cfg(feature = "live")]
 
@@ -27,7 +27,7 @@ fn sample(id: &str) -> Registration {
     })
 }
 
-/// The suite registrar: the Go registrar's shape with health-check
+/// The suite registrar: the standard registration shape with health-check
 /// registration off. The TCP checks would target endpoints nothing
 /// serves — from the container those ports are dead — which marks the
 /// service critical and invisible to the passing-only health view. The
@@ -40,7 +40,7 @@ fn registry() -> ConsulRegistry {
     ConsulRegistry::connect_with(&endpoint(), options).expect("consul connects")
 }
 
-/// The Go resolver's view of one registered instance, when the health
+/// The resolved view of one registered instance, when the health
 /// view contains it.
 #[tokio::test]
 async fn registered_instance_is_discoverable_then_removed() {

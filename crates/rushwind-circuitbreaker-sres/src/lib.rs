@@ -1,6 +1,5 @@
 //! Google-SRE probabilistic circuit breaker for the RushWind
-//! circuitbreaker contract — the Go
-//! `go-wind-plugins/circuitbreaker/sres` ported as-is.
+//! circuitbreaker contract.
 //!
 //! From "Site Reliability Engineering" (chapter 22): unlike
 //! threshold-based breakers, acceptance is probabilistic —
@@ -125,7 +124,7 @@ impl SreBreaker {
         random_unit() < accept
     }
 
-    /// Records a successful request outcome — the Go `MarkSuccess`.
+    /// Records a successful request outcome.
     pub fn mark_success(&self) {
         let mut state = self.state.lock().unwrap();
         self.rotate_locked(&mut state, Instant::now());
@@ -133,7 +132,7 @@ impl SreBreaker {
         state.buckets[index].requests += 1;
     }
 
-    /// Records a failed request outcome — the Go `MarkFailure`.
+    /// Records a failed request outcome.
     pub fn mark_failure(&self) {
         let mut state = self.state.lock().unwrap();
         self.rotate_locked(&mut state, Instant::now());
@@ -142,7 +141,7 @@ impl SreBreaker {
         state.buckets[index].errors += 1;
     }
 
-    /// The derived state — the Go `State`: `closed` with no data,
+    /// The derived state: `closed` with no data,
     /// `half-open` while partially accepting, `open` when acceptance
     /// has decayed to zero.
     pub fn state(&self) -> State {
@@ -161,7 +160,7 @@ impl SreBreaker {
         }
     }
 
-    /// The window totals — the Go `statsLocked`.
+    /// The window totals.
     fn window_totals(&self, state: &SreState) -> (u64, u64) {
         let mut requests = 0u64;
         let mut errors = 0u64;
@@ -172,7 +171,7 @@ impl SreBreaker {
         (requests, errors)
     }
 
-    /// The Go `rotateLocked`: clear buckets that fell out of the
+    /// Clears buckets that fell out of the
     /// window.
     fn rotate_locked(&self, state: &mut SreState, now: Instant) {
         let elapsed = now.duration_since(state.last_rotate);
@@ -240,15 +239,14 @@ impl CircuitBreaker for SreBreaker {
     }
 }
 
-/// A uniform random sample in `[0, 1)` from the OS CSPRNG — the Go
-/// `rand.Float64` stand-in.
+/// A uniform random sample in `[0, 1)` from the OS CSPRNG.
 fn random_unit() -> f64 {
     let mut bytes = [0u8; 8];
     let _ = getrandom::fill(&mut bytes);
     u64::from_le_bytes(bytes) as f64 / u64::MAX as f64
 }
 
-/// The SRE engine's settings — the Go `config` fields.
+/// The SRE engine's settings.
 #[derive(Debug, Clone)]
 pub struct SreOptions {
     /// The sensitivity multiplier. Default 2.0.

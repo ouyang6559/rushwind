@@ -1,4 +1,4 @@
-//! The uniform audit trail — go-crud's `Auditor` hook.
+//! The uniform audit trail — the `Auditor` hook.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -78,8 +78,7 @@ impl AuditEntry {
 /// The sink audit entries flow into.
 ///
 /// Engines call it through [`crate::QueryCtx::audit`]; the `Noop` flavor
-/// makes skipping the hook free, exactly like go-crud's zero-overhead
-/// implementation.
+/// makes skipping the hook free.
 pub trait Auditor: Send + Sync {
     /// Records one entry. Implementations must not block for long and must
     /// never fail the operation being audited.

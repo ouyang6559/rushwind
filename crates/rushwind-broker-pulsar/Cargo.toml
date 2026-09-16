@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-broker-pulsar"
-description = "Pulsar engine for the RushWind broker contract: per-topic producers through pulsar-rs's multi-topic producer and Shared-type consumers under the Go engine's fixed subscription name."
+description = "Pulsar engine for the RushWind broker contract: per-topic producers through pulsar-rs's multi-topic producer and Shared-type consumers under a fixed shared subscription name."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

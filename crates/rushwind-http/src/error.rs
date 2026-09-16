@@ -1,8 +1,8 @@
-//! The error envelope — the port of the Go predecessor's `errors.WindError`.
+//! The error envelope for every HTTP rejection.
 //!
-//! A gRPC-aligned [`Code`] maps to the HTTP status (the Go `http.go`
-//! mapping), the stable `reason` string is the i18n key the frontend
-//! substitutes, `message` is human-readable, `details` carries optional
+//! A gRPC-aligned [`Code`] maps to the HTTP status, the stable `reason`
+//! string is the i18n key the frontend substitutes, `message` is
+//! human-readable, `details` carries optional
 //! structured context. [`HttpError::into_response`] renders the JSON
 //! envelope every rejection shares.
 
@@ -27,8 +27,8 @@ pub const REASON_UNAUTHENTICATED: &str = "AUTHN_UNAUTHENTICATED";
 /// The reason a malformed storage filter/query surfaces under.
 pub const REASON_INVALID_QUERY: &str = "INVALID_QUERY";
 
-/// The error class — the Go predecessor aligns its codes with gRPC's,
-/// and so does this enum; [`Code::status`] is the Go `http.go` mapping.
+/// The error class — the codes align with gRPC's;
+/// [`Code::status`] is the HTTP status mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Code {
@@ -55,7 +55,7 @@ pub enum Code {
 }
 
 impl Code {
-    /// The HTTP status this code maps to — the Go `http.go` table.
+    /// The HTTP status this code maps to.
     pub const fn status(self) -> u16 {
         match self {
             Code::BadRequest => 400,
@@ -72,7 +72,7 @@ impl Code {
     }
 
     /// The stable wire string for the envelope's `code` field — the
-    /// gRPC code name, shared with the Go predecessor.
+    /// gRPC code name.
     pub const fn as_str(self) -> &'static str {
         match self {
             Code::BadRequest => "BAD_REQUEST",
@@ -89,9 +89,10 @@ impl Code {
     }
 }
 
-/// The one error shape every HTTP rejection returns — the Go
-/// `WindError{Code, Reason, Message, Details}` minus the server-side
-/// `Cause`/`StackTrace` (those belong to the log, not the wire).
+/// The one error shape every HTTP rejection returns: `code`, `reason`,
+/// `message`, `details` — with no server-side
+/// `Cause`/`StackTrace` on the wire (those belong to the log, not the
+/// wire).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct HttpError {
@@ -207,7 +208,7 @@ impl fmt::Display for HttpError {
 
 impl std::error::Error for HttpError {}
 
-/// The JSON wire shape of a rejection — the Go envelope's field names.
+/// The JSON wire shape of a rejection.
 /// Borrowing keeps the render allocation-free beyond the body itself.
 #[derive(Debug, Serialize)]
 pub struct ErrorEnvelope<'a> {

@@ -1,38 +1,36 @@
 //! Consul adapter for the RushWind registry contract — registration and
-//! discovery, ported from `go-wind-plugins/registry/consul` and speaking
-//! the same agent HTTP API the hashicorp Go client speaks.
+//! discovery over the Consul agent HTTP API.
 //!
 //! # Registration
 //!
-//! [`Registrar::register`] PUTs the go-wind registration shape to
+//! [`Registrar::register`] PUTs the rush-wind registration shape to
 //! `/v1/agent/service/register`: instance identity as the service
 //! registration, version in a `version=` tag, endpoints as tagged
 //! addresses holding the full endpoint URL strings keyed by scheme.
-//! Health-check registration follows the Go registrar: per-endpoint TCP
+//! Health-check registration: per-endpoint TCP
 //! checks and a TTL check (`service:{id}`, TTL twice the check interval),
 //! each with `DeregisterCriticalServiceAfter`, plus a background
 //! heartbeat task that keeps the TTL check passing and re-registers the
-//! whole service when a heartbeat PUT fails — the Go
-//! `heartBeat`-goroutine behavior, heartbeat failure included.
+//! whole service when a heartbeat PUT fails — self-healing, heartbeat
+//! failure included.
 //!
 //! # Discovery
 //!
 //! [`Discovery::get_service`] reads the current passing-only health view
 //! (`/v1/health/service/{name}?passing=1`). [`Discovery::watch`] starts,
 //! per newly watched service, a background loop over consul's **blocking
-//! queries** (`index` + `wait=55000ms`, cut to the 10 s client timeout —
-//! exactly the Go resolver's shape): each observed index change carrying
+//! queries** (`index` + `wait=55000ms`, cut to the 10 s client timeout):
+//! each observed index change carrying
 //! a non-empty instance list updates the service's cache and wakes its
-//! watchers. Empty lists — removals — never wake watchers, matching the
-//! Go fanout.
+//! watchers. Empty lists — removals — never wake watchers.
 //!
-//! # Divergences from the Go adapter
+//! # Known limitations
 //!
-//! - Single datacenter: the Go `MULTI` datacenter mode is not ported.
-//! - The Go resolver/service-check function hooks are not ported; the
+//! - Single datacenter: multi-datacenter operation is out of scope.
+//! - Resolver/service-check function hooks are not customizable; the
 //!   default resolver is baked in.
 //! - Watched services live forever: the poll loop holds the service
-//!   cache permanently, as the Go resolve goroutines do.
+//!   cache permanently.
 //!
 //! # Cancellation
 //!
@@ -62,14 +60,13 @@ use rushwind_transport::Instance;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
-/// The Go resolver's blocking-query wait, in milliseconds.
+/// The blocking-query wait, in milliseconds.
 const BLOCKING_WAIT: &str = "55000ms";
-/// The Go client's per-request body for a passing TTL update: its
-/// `UpdateTTL` normalizes the "pass" status to "passing" before
-/// sending, so the wire value is "passing".
+/// The per-request body for a passing TTL update; the wire value is the
+/// normalized "passing" status.
 const PASSING_UPDATE: &str = r#"{"Status":"passing","Output":"pass"}"#;
 
-/// Options mirroring the Go registrar's option surface.
+/// Options for the consul registrar.
 #[derive(Debug, Clone)]
 pub struct ConsulOptions {
     /// Whether per-endpoint TCP checks are registered. Default `true`.
@@ -100,8 +97,7 @@ impl Default for ConsulOptions {
 }
 
 /// The cache of one watched service: the latest broadcast instance
-/// list. The poll task holds this forever once a service is watched —
-/// the Go adapter's permanent resolve goroutines.
+/// list. The poll task holds this forever once a service is watched.
 struct ServiceSet {
     /// The latest instance snapshot; empty until first broadcast.
     cache: watch::Sender<Vec<Instance>>,
@@ -145,8 +141,8 @@ impl ConsulRegistry {
     }
 
     /// Constructs from the bootstrap factory's settings wire shape:
-    /// `addr` (required). Every health-check knob stays at the Go
-    /// defaults.
+    /// `addr` (required). Every health-check knob stays at its
+    /// default.
     pub fn from_settings(settings: serde_json::Value) -> Result<Self, RegistryError> {
         let settings: ConsulSettings = serde_json::from_value(settings)
             .map_err(|e| RegistryError::Failed(format!("settings parse: {e}")))?;
@@ -173,7 +169,7 @@ impl Registrar for ConsulRegistry {
 
             // The heartbeat task: initial pass after 1 s, then one per
             // interval; a failing pass re-registers the service after a
-            // short random backoff — the Go heartBeat goroutine.
+            // short random backoff.
             let task_key = format!(
                 "{}/{}",
                 registration.instance.name, registration.instance.id
@@ -248,7 +244,7 @@ impl Discovery for ConsulRegistry {
         service_name: &'a str,
     ) -> BoxFuture<'a, Result<Vec<Instance>, RegistryError>> {
         Box::pin(async move {
-            // The Go adapter serves a watched service from its cache
+            // A watched service is served from its cache
             // when one has been broadcast.
             let cached = {
                 let sets = self.inner.sets.lock().expect("service sets poisoned");
@@ -295,9 +291,9 @@ impl Discovery for ConsulRegistry {
                 }
             };
 
-            // Only a newly created set resolves: the Go adapter runs the
-            // initial fetch inline (failure aborts the watch) and then
-            // spawns the permanent blocking-poll loop.
+            // Only a newly created set resolves: the
+            // initial fetch runs inline (failure aborts the watch) and the
+            // permanent blocking-poll loop spawns afterwards.
             if spawned {
                 let (instances, index) = fetch_instances(
                     &self.inner.http,
@@ -337,8 +333,8 @@ impl Inner {
 
 /// The consul-backed [`Watcher`]: a receiver on the watched service's
 /// broadcast cache. The first [`Watcher::next`] returns the current
-/// cache immediately when a snapshot is already broadcast (the Go
-/// watcher's creation push), and blocks on broadcasts otherwise.
+/// cache immediately when a snapshot is already broadcast, and blocks
+/// on broadcasts otherwise.
 struct ConsulWatcher {
     rx: watch::Receiver<Vec<Instance>>,
     first: bool,
@@ -376,10 +372,10 @@ impl Drop for ConsulWatcher {
     }
 }
 
-/// The permanent blocking-poll loop: one query per second (the Go
-/// resolver's ticker cadence), each holding on the last-seen index
+/// The permanent blocking-poll loop: one query per second, each holding
+/// on the last-seen index
 /// until consul reports a change or the client timeout cuts it.
-/// Errors back off one second, as the Go loop does.
+/// Errors back off one second.
 async fn poll_loop(
     http: reqwest::Client,
     base: String,
@@ -407,9 +403,8 @@ async fn poll_loop(
 
 /// The TTL heartbeat loop: one passing update after a second, then one
 /// per interval; a failing update re-registers the service after a
-/// short random backoff — the Go heartBeat goroutine, minus its
-/// context-cancellation deregistration (the Rust cancellation story is
-/// task abort plus `DeregisterCriticalServiceAfter`).
+/// short random backoff. Cancellation is
+/// task abort plus `DeregisterCriticalServiceAfter`.
 async fn heartbeat_loop(
     http: reqwest::Client,
     base: String,
@@ -433,8 +428,7 @@ async fn heartbeat_loop(
 }
 
 /// Splits an endpoint URL into `(scheme, host, port)`, with the port
-/// defaulting to 0 — the Go register path's `url.Parse` +
-/// ignored-error `ParseUint` shape.
+/// defaulting to 0 when absent or unparseable.
 fn split_endpoint(endpoint: &str) -> Option<(&str, &str, i64)> {
     let separator = endpoint.find("://")?;
     let scheme = &endpoint[..separator];
@@ -448,8 +442,8 @@ fn split_endpoint(endpoint: &str) -> Option<(&str, &str, i64)> {
     Some((scheme, host, port))
 }
 
-/// Builds the `/v1/agent/service/register` body the Go registrar
-/// sends, semantics intact: identity fields, the version tag, tagged
+/// Builds the `/v1/agent/service/register` body:
+/// identity fields, the version tag, tagged
 /// addresses holding full endpoint URLs, and the TCP + TTL checks per
 /// the options.
 fn build_registration(
@@ -556,7 +550,7 @@ async fn put_deregister(http: &reqwest::Client, base: &str, id: &str) -> Result<
     Ok(())
 }
 
-/// PUT /v1/agent/check/update/{check-id} with the Go client's passing
+/// PUT /v1/agent/check/update/{check-id} with the passing
 /// body — the TTL heartbeat.
 async fn put_pass(http: &reqwest::Client, base: &str, check_id: &str) -> Result<(), RegistryError> {
     let url = format!("{base}/v1/agent/check/update/{check_id}");
@@ -576,7 +570,7 @@ async fn put_pass(http: &reqwest::Client, base: &str, check_id: &str) -> Result<
     Ok(())
 }
 
-/// GET /v1/health/service/{name} — the Go client's health view, with
+/// GET /v1/health/service/{name} — the health view, with
 /// `passing=1` and `wait` always set, `index` only for blocking
 /// queries. Returns the resolved instance list and the response's
 /// `X-Consul-Index`.
@@ -620,7 +614,7 @@ async fn fetch_instances(
     Ok((resolve_entries(entries), next_index))
 }
 
-/// The Go default resolver: version from the `version=` tag, endpoints
+/// The default resolver: version from the `version=` tag, endpoints
 /// from tagged addresses (the lan/wan interface addresses excluded),
 /// with the bare address/port fallback.
 fn resolve_entries(entries: Vec<WireEntry>) -> Vec<Instance> {
@@ -670,9 +664,8 @@ fn resolve_entries(entries: Vec<WireEntry>) -> Vec<Instance> {
         .collect()
 }
 
-/// The wire shape of `/v1/agent/service/register`, matching the Go
-/// `api.AgentServiceRegistration` marshal semantics: fields the Go
-/// client omits when empty are omitted here too.
+/// The wire shape of `/v1/agent/service/register`; fields that are
+/// empty are omitted.
 #[derive(Serialize)]
 #[allow(non_snake_case)]
 struct WireRegistration<'a> {
@@ -686,7 +679,7 @@ struct WireRegistration<'a> {
     Checks: Option<Vec<WireCheck>>,
 }
 
-/// The Go `api.ServiceAddress` shape: the full endpoint URL string and
+/// A tagged address entry: the full endpoint URL string and
 /// its parsed port.
 #[derive(Serialize, Deserialize)]
 #[allow(non_snake_case)]
@@ -695,7 +688,7 @@ struct WireServiceAddress {
     Port: i64,
 }
 
-/// The Go `api.AgentServiceCheck` shape, restricted to the fields the
+/// A health-check entry, restricted to the fields the
 /// registrar sets.
 #[derive(Default, Serialize)]
 #[allow(non_snake_case)]

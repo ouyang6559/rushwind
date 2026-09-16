@@ -1,28 +1,25 @@
-//! The WebAssembly engine for the Rust script contract — the Go
-//! predecessor's wazero engine, rebuilt over [`wasmi`], the
-//! pure-Rust interpreter, as the pure-interpreter counterpart of
-//! wazero's pure-Go one.
+//! The WebAssembly engine for the Rust script contract, built over
+//! [`wasmi`], the
+//! pure-Rust interpreter.
 //!
-//! Semantics preserved from the predecessor:
+//! Semantics:
 //!
 //! - `load` compiles a module and keeps it; `execute` instantiates
 //!   the **last** loaded module and invokes its `_start` export.
 //! - A module without a `_start` export instantiates silently and the
-//!   run answers `Null` — the module stays instantiated, the Go
-//!   "returns nil if `_start` is not exported" shape.
+//!   run answers `Null` — the module stays instantiated.
 //! - The engine implements only the lifecycle, loader, and executor
 //!   capabilities — no globals, no host functions, no modules, no
-//!   watch, the Go wazero capability set; every other probe answers
+//!   watch; every other probe answers
 //!   `None`.
 //!
-//! Divergences from the Go predecessor:
+//! Divergences and limits:
 //!
 //! - Wasm bytes ride the contract's [`ScriptSource`](rushwind_script)
-//!   `String` carrier, which the port made UTF-8; modules must
-//!   therefore be UTF-8-clean byte strings (the predecessor's Go
-//!   `string` carried arbitrary bytes). Hand-encoded minimal sections
+//!   `String` carrier, which is UTF-8; modules must
+//!   therefore be UTF-8-clean byte strings. Hand-encoded minimal sections
 //!   are; compiler output generally is not.
-//! - The predecessor's wazero `Runtime` handle and its close
+//! - A separate runtime handle and its close
 //!   bookkeeping collapse into the engine dropping its
 //!   [`wasmi::Engine`] on close.
 //!
@@ -31,7 +28,7 @@
 //! | Capability | Status |
 //! |:---|:---|
 //! | loader / executor / lifecycle | implemented |
-//! | globals, functions, modules, watch, sandbox, hooks, sync+quota | not offered by the predecessor's wazero engine either |
+//! | globals, functions, modules, watch, sandbox, hooks, sync+quota | not offered |
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -335,8 +332,7 @@ impl ScriptExecutor for WasmEngine {
     }
 }
 
-/// The factory hook the Go predecessor's `init()` registered under
-/// the wazero type: a fresh uninitialized engine.
+/// The factory hook: a fresh uninitialized engine.
 pub fn factory() -> Result<SharedEngine, ScriptError> {
     Ok(Arc::new(WasmEngine::new()))
 }
@@ -349,11 +345,9 @@ pub fn register() {
 }
 
 // ---------------------------------------------------------------------
-// The aggregate's remaining faces as absent-capability stubs. The Go
-// predecessor satisfied the Engine interface for wazero by embedding
-// nil interfaces — a structural satisfier whose every use panicked.
-// The port keeps the trait set satisfied (the blanket FullEngine
-// requires it) but answers every call with CapabilityNotSupported,
+// The aggregate's remaining faces as absent-capability stubs. The
+// trait set stays satisfied (the blanket FullEngine
+// requires it) but every call answers with CapabilityNotSupported,
 // and the probes on the core trait stay `None`, so well-behaved
 // callers never reach these stubs at all.
 // ---------------------------------------------------------------------

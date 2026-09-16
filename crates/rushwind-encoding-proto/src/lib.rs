@@ -1,10 +1,9 @@
-//! Protobuf engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/proto` package rethought for Rust.
+//! Protobuf engine for the RushWind encoding contract, rethought for Rust.
 //!
-//! The Go codec is a registry member that type-asserts
-//! `v.(proto.Message)` at runtime and delegates to binary proto. Rust
-//! has no runtime equivalent of that assertion — whether a type is a
-//! protobuf message must be known at compile time — so binary proto
+//! A registry codec that type-asserts
+//! `v.(proto.Message)` at runtime and delegates to binary proto has no
+//! Rust twin: whether a type is a
+//! protobuf message must be known at compile time, so binary proto
 //! cannot hide behind the object-safe [`Codec`
 //! trait](rushwind_encoding::Codec). This engine is therefore a typed
 //! sidecar: not a registry member, but the same wire behavior, generic
@@ -37,8 +36,8 @@
 use prost::Message;
 use rushwind_encoding::EncodingError;
 
-/// The binary protobuf codec — the Rust stand-in for the Go `proto`
-/// registry codec, generic over `prost::Message` instead of runtime
+/// The binary protobuf codec — typed, generic over `prost::Message`
+/// instead of runtime
 /// type assertions.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProtoCodec;
@@ -49,14 +48,13 @@ impl ProtoCodec {
         Self
     }
 
-    /// Encodes a protobuf message to binary wire format — the Go
-    /// `codec.Marshal(v)` path, with the message bound at compile time.
+    /// Encodes a protobuf message to binary wire format, with the
+    /// message bound at compile time.
     pub fn marshal<M: Message>(&self, message: &M) -> Result<Vec<u8>, EncodingError> {
         Ok(message.encode_to_vec())
     }
 
-    /// Decodes binary wire format into a protobuf message — the Go
-    /// `codec.Unmarshal(data, v)` path.
+    /// Decodes binary wire format into a protobuf message.
     pub fn unmarshal<M: Message + Default>(&self, data: &[u8]) -> Result<M, EncodingError> {
         M::decode(data).map_err(|e| EncodingError::Failed(format!("proto decode: {e}")))
     }

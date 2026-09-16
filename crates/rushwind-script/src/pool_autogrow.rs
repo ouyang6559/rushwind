@@ -3,25 +3,24 @@
 //! instance is produced on the fly.
 //!
 //! Instances come from a factory that owns **both** construction and
-//! initialization — the Go `EngineFactoryFunc` shape — so the pool
+//! initialization, so the pool
 //! builder can apply per-instance pre-init configuration (a Lua
 //! engine's sandbox allow-list, pre-registered globals) before the
 //! runtime exists. [`AutoGrowEnginePool::new`], the type-based
 //! convenience constructor, wraps the factory registered under the
 //! given name plus [`ScriptEngine::init`](crate::ScriptEngine::init)
-//! into that shape, the historical behavior.
+//! into that shape.
 //!
-//! The growth bookkeeping follows the Go structure: a live-instance
+//! The growth bookkeeping: a live-instance
 //! counter checked and incremented under its lock before the factory
 //! runs (rolled back on factory failure), the lending queue and its
 //! counting semaphore for the blocking path, and [`Semaphore::close`]
-//! as the Go `close(chan)` wake-up for blocked acquirers.
+//! as the wake-up for blocked acquirers.
 //!
-//! Divergence from the Go predecessor: the `typ` field kept "for
-//! diagnostics" is dropped (never read), the nil-factory check is
-//! dropped (`FullEngineFactory` cannot be null), and `Release` into a
-//! full queue — unreachable under the accounting — closes the engine
-//! without the Go channel-panic guard.
+//! The `typ` field kept "for
+//! diagnostics" elsewhere is not carried (never read), a null-factory check is
+//! unnecessary (`FullEngineFactory` cannot be null), and `Release` into a
+//! full queue — unreachable under the accounting — closes the engine.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};

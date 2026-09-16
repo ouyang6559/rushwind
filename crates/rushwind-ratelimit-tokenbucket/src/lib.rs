@@ -1,19 +1,18 @@
-//! Token-bucket rate limiter for the RushWind ratelimit contract —
-//! the Go `go-wind-plugins/ratelimit/tokenbucket` ported as-is.
+//! Token-bucket rate limiter for the RushWind ratelimit contract.
 //!
 //! Tokens refill at a fixed rate (`rate` per second) up to the burst
 //! capacity; every request consumes one. An empty bucket rejects
 //! ([`TokenBucket::allow`]) or delays ([`TokenBucket::wait`]).
 //!
-//! The Go virtual-clock accounting is preserved: tokens are computed
+//! Virtual-clock accounting: tokens are computed
 //! from the elapsed time since the last take, so a limiter idle for a
 //! long period has a full burst available immediately, and Wait's
 //! delay is the exact deficit divided by the rate.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
-//! - The Go `notify` channel wakes concurrent Waiters when a Close or
-//!   take makes tokens available; here each Wait recomputes its own
+//! - Waking concurrent Waiters when a Close or
+//!   take makes tokens available: here each Wait recomputes its own
 //!   delay from the shared state, which serves the same purpose
 //!   without the broadcast.
 //! - No clock injection (`WithClock`): tests use real short
@@ -40,7 +39,7 @@ pub struct TokenBucket {
     burst: f64,
 }
 
-/// The token-bucket engine's settings — the Go `New` parameters.
+/// The token-bucket engine's settings.
 #[derive(Debug, Clone)]
 pub struct TokenBucketOptions {
     /// The sustained refill rate, in tokens per second.
@@ -51,7 +50,7 @@ pub struct TokenBucketOptions {
 
 impl TokenBucket {
     /// Builds a limiter starting full. Fails when `rate` or `burst`
-    /// is not strictly positive — the Go `ErrInvalidConfig`.
+    /// is not strictly positive.
     pub fn new(options: TokenBucketOptions) -> Result<Self, RateLimitError> {
         if options.rate <= 0.0 || options.burst <= 0.0 {
             return Err(RateLimitError::Failed(
@@ -69,8 +68,8 @@ impl TokenBucket {
         })
     }
 
-    /// Attempts to consume one token without blocking — the Go
-    /// `Allow`. `false` when the bucket is empty or the limiter is
+    /// Attempts to consume one token without blocking.
+    /// `false` when the bucket is empty or the limiter is
     /// closed.
     pub fn allow(&self) -> bool {
         let mut state = self.state.lock().unwrap();
@@ -81,7 +80,7 @@ impl TokenBucket {
     }
 
     /// Consumes `n` tokens, returning the duration to wait when the
-    /// bucket cannot cover the request yet — the Go `takeLocked`.
+    /// bucket cannot cover the request yet.
     /// Replenishes tokens from elapsed time first.
     fn take_locked(&self, state: &mut State, n: f64) -> Take {
         let now = Instant::now();

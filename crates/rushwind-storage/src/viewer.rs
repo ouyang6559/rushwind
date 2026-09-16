@@ -1,4 +1,4 @@
-//! Viewer-scoped tenancy — the five data ranges from go-crud.
+//! Viewer-scoped tenancy — five data ranges.
 //!
 //! A [`Viewer`] rides in every [`QueryCtx`](crate::QueryCtx) and bounds what
 //! the repository is allowed to see. Engines must enforce the scope on every
@@ -9,9 +9,9 @@ use crate::value::Value;
 
 /// How much of the table the viewer may see.
 ///
-/// The five ranges mirror go-crud: `ALL` (everything), `UNIT` (the viewer's
+/// The five ranges: `ALL` (everything), `UNIT` (the viewer's
 /// organizational unit), `USER` (an explicit list of owner ids), `OWN`
-/// (go-crud's `SELF` — only rows the viewer owns), and `NONE` (deny
+/// (only rows the viewer owns), and `NONE` (deny
 /// everything). The default is `NONE` — scopes close by default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum DataRange {

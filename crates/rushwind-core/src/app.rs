@@ -31,8 +31,9 @@ struct Options {
     hooks_after: Vec<Hook>,
 }
 
-/// Builder for [`App`], following the composable-option pattern of the Go
-/// predecessor (`wind.New(WithServer(...), ...)`).
+/// Builder for [`App`], following the composable-option pattern: chain
+/// `server(...)`, `before_stop(...)` / `after_stop(...)` and friends to
+/// assemble the application piece by piece.
 pub struct Builder {
     name: Option<String>,
     version: Option<String>,

@@ -1,11 +1,8 @@
-//! Authentication contract for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/security/authn`.
+//! Authentication contract for RushWind.
 //!
-//! The contract splits authentication in two halves mirroring the Go
-//! `Authenticator` interface:
+//! The contract splits authentication in two halves:
 //!
-//! - **Extraction** — pulling the raw credential out of a request. Go pulls
-//!   it from gRPC metadata via `AuthFromMD`; Rust has no request context, so
+//! - **Extraction** — pulling the raw credential out of a request.
 //!   [`Authenticator::extract_token`] reads the header pairs a transport
 //!   exposes (the HTTP-family [`Handshake`](rushwind_transport::Handshake)
 //!   snapshot is the carrier today). The default implements the
@@ -16,9 +13,8 @@
 //!   mints one. Each engine crate (`rushwind-authn-*`) implements exactly
 //!   this half against one credential scheme.
 //!
-//! [`Authenticator::authenticate`] composes the two — the exact shape of
-//! every Go engine's `Authenticate` — and, like them, collapses every
-//! extraction failure to
+//! [`Authenticator::authenticate`] composes the two halves — extraction
+//! first, then validation — and collapses every extraction failure to
 //! [`AuthnError::MissingBearerToken`](crate::AuthnError::MissingBearerToken).
 //!
 //! # Landing point
@@ -30,17 +26,20 @@
 //! application's middleware; the contract crate only supplies the
 //! primitives.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `Authenticate(ctx)` reads gRPC metadata | [`Authenticator::authenticate`] reads a `&[(String, String)]` header slice; header names and schemes compare case-insensitively (gRPC normalizes to lowercase; HTTP presents either case) |
-//! | `MDWithAuth` injects credentials into outgoing context metadata | [`format_authorization`] formats the header value; setting it on a client request is the caller's job |
-//! | `CreateIdentityWithContext` round-trips through context mutation | dropped — `create_identity` returns the credential string, the caller places it |
-//! | engines register via `init()` + per-package constructors | direct constructors per engine crate, the registry/storage pattern |
-//! | `Close()` | `Drop` |
+//! - [`Authenticator::authenticate`] reads a `&[(String, String)]` header
+//!   slice; header names and schemes compare case-insensitively (HTTP
+//!   presents either case).
+//! - [`format_authorization`] formats the header value; setting it on a
+//!   client request is the caller's job.
+//! - `create_identity` returns the credential string; the caller places it
+//!   on the outgoing request.
+//! - Engines are constructed directly per engine crate, the registry/storage
+//!   pattern.
+//! - Shutdown rides `Drop`.
 //!
-//! # Engine matrix (ported)
+//! # Engine matrix
 //!
 //! | Crate | Credential scheme |
 //! |:---|:---|
@@ -52,8 +51,8 @@
 //! | `rushwind-authn-presharedkey` | one-of-N static bearer keys |
 //! | `rushwind-authn-session` | opaque session IDs against a pluggable store |
 //!
-//! The Go engines `mtls`, `oauth2`, `oidc`, and the `authz` family's
-//! external-policy engines remain unported — their carriers (peer TLS
+//! The `mtls`, `oauth2`, and `oidc` schemes, and the `authz` family's
+//! external-policy engines, are not provided yet — their carriers (peer TLS
 //! certificates, OAuth flows, remote policy services) have no contract
 //! surface in RushWind yet.
 

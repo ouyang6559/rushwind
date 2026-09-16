@@ -1,5 +1,4 @@
-//! Consul KV config source for the RushWind configuration contract —
-//! the Go `go-wind-plugins/config/consul` ported onto reqwest.
+//! Consul KV config source for the RushWind configuration contract, over reqwest.
 //!
 //! Load is a GET of the Consul KV path (`/v1/kv/{path}`): 200 carries
 //! the value (base64 in the JSON envelope, decoded here), 404 is the
@@ -9,8 +8,7 @@
 //! request until the value changes or the wait lapses, then the new
 //! value is pushed.
 //!
-//! One shared multiplexed connection serves loads and watches, as the
-//! Go `api.Client` pool does.
+//! One shared multiplexed connection serves loads and watches.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -23,7 +21,7 @@ use serde::Deserialize;
 use rushwind_config::{BoxFuture, ConfigError, Source, ValueStream};
 use tokio::sync::mpsc;
 
-/// The default blocking-query wait — the Go watch plan's cadence.
+/// The default blocking-query wait.
 const BLOCKING_WAIT: &str = "55s";
 
 struct Inner {
@@ -56,8 +54,8 @@ impl ConsulSource {
     }
 
     /// Builds the engine from the Consul address (e.g.
-    /// `http://127.0.0.1:8500`) and the KV path. The Go "path
-    /// invalid" guard when the path is empty.
+    /// `http://127.0.0.1:8500`) and the KV path; an empty path is a
+    /// construction error.
     pub fn new(addr: &str, path: &str) -> Result<Self, ConfigError> {
         if path.is_empty() {
             return Err(ConfigError::Failed("consul: path invalid".to_string()));

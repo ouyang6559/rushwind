@@ -1,19 +1,16 @@
-//! Object storage contract for RushWind, extracted from the Go
-//! predecessor `go-wind-plugins/oss`: put/get/delete of byte objects
+//! Object storage contract for RushWind: put/get/delete of byte objects
 //! in an S3-compatible bucket.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! The Go domain ships two thin clients — `s3` (aws-sdk-go-v2) and
-//! `minio` (minio-go) — both speaking the same S3-compatible API.
-//! Rust keeps one contract, [`ObjectStorage`], and one engine shape:
-//! an S3-compatible client covers MinIO transparently (MinIO **is**
-//! an S3-compatible server), so the two Go backends collapse into
-//! `rushwind-oss-s3`.
+//! One contract, [`ObjectStorage`], and one engine shape cover the
+//! domain: an S3-compatible client speaks the same API against AWS S3
+//! and MinIO alike (MinIO **is** an S3-compatible server), so a
+//! single engine, `rushwind-oss-s3`, suffices.
 //!
-//! Go's nil-check error sentinels (`ErrNilClient`, `ErrNilObjectBody`)
-//! have no Rust equivalent — the type system makes nil impossible;
-//! the remaining sentinels live on as [`StorageError`] variants
+//! Guard-style error sentinels are unneeded here — the type system
+//! makes nil inputs impossible; validation failures surface as
+//! [`StorageError`] variants
 //! (`EmptyBucket`, `EmptyObjectKey`) plus `NotFound` for a missing
 //! object read.
 //!
@@ -39,12 +36,11 @@ pub enum StorageError {
     Failed(String),
     /// The object key does not exist.
     NotFound,
-    /// The configured bucket is empty — the Go `ErrEmptyBucket`.
+    /// The configured bucket is empty.
     EmptyBucket,
-    /// The object key is empty — the Go `ErrEmptyObjectKey`.
+    /// The object key is empty.
     EmptyObjectKey,
-    /// The object body is empty where content was required — the Go
-    /// `ErrNilObjectBody`.
+    /// The object body is empty where content was required.
     EmptyObjectBody,
 }
 
@@ -62,8 +58,7 @@ impl std::fmt::Display for StorageError {
 
 impl std::error::Error for StorageError {}
 
-/// The connection settings — the Go `s3.Config`, byte-compatible in
-/// shape.
+/// The connection settings for an S3-compatible endpoint.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct StorageConfig {
     /// The S3-compatible endpoint host (without scheme), e.g.
@@ -88,11 +83,11 @@ pub struct StorageConfig {
     pub bucket: String,
 }
 
-/// The object storage contract — the Go `s3.Storage` surface.
+/// The object storage contract.
 /// Engines must be callable through shared references (`&self`).
 pub trait ObjectStorage: Send + Sync {
     /// Stores the object bytes under `key`, with an optional content
-    /// type — the Go `PutObject`.
+    /// type.
     fn put<'a>(
         &'a self,
         key: &'a str,
@@ -101,11 +96,10 @@ pub trait ObjectStorage: Send + Sync {
     ) -> BoxFuture<'a, Result<(), StorageError>>;
 
     /// Reads the object bytes for `key`; `NotFound` when the object
-    /// does not exist — the Go `GetObject`.
+    /// does not exist.
     fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Vec<u8>, StorageError>>;
 
-    /// Removes the object; a no-op when missing. An addition beyond
-    /// the Go surface.
+    /// Removes the object; a no-op when missing.
     fn delete<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<(), StorageError>>;
 
     /// Probes the engine with a timeout bound for liveness checks —

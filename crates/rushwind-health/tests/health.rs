@@ -1,6 +1,5 @@
 //! The health domain's conformance suite: aggregation rules, per-check
-//! timeouts, combinators, and the HTTP edge — mirroring the Go
-//! `health_test.go` semantics.
+//! timeouts, combinators, and the HTTP edge.
 
 #![cfg(test)]
 
@@ -11,7 +10,7 @@ use rushwind_health::{
     all, any, http, liveness_handler, ping, readiness_handler, tcp, Health, HealthOptions,
 };
 
-/// No checkers registered: the aggregate is up with the Go
+/// No checkers registered: the aggregate is up with the
 /// "no checkers registered" message.
 #[tokio::test]
 async fn empty_aggregate_is_up() {
@@ -22,7 +21,7 @@ async fn empty_aggregate_is_up() {
 }
 
 /// Any down checker makes the aggregate down; unknown only surfaces
-/// when nothing is down — the Go aggregation rules.
+/// when nothing is down — the aggregation rules.
 #[tokio::test]
 async fn aggregation_rules() {
     let health = Health::new(HealthOptions::default());
@@ -46,8 +45,7 @@ async fn aggregation_rules() {
     assert_eq!(result.status.as_str(), "down");
 }
 
-/// A timed-out checker reports down with a timeout message — the Go
-/// goroutine deadline behavior.
+/// A timed-out checker reports down with a timeout message.
 #[tokio::test]
 async fn timeout_reports_down() {
     let health = Health::new(HealthOptions {
@@ -88,7 +86,7 @@ async fn tcp_checker_dials() {
     assert_eq!(checker().await.status.as_str(), "down");
 }
 
-/// The all/any combinators short-circuit per the Go semantics.
+/// The all/any combinators short-circuit on their first verdict.
 #[tokio::test]
 async fn combinators() {
     let up = ping(|| async { Ok::<(), String>(()) });

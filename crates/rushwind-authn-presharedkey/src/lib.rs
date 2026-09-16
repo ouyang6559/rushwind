@@ -1,5 +1,4 @@
-//! Preshared-key engine for the Rust authentication contract, ported
-//! from `go-wind-plugins/security/authn/presharedkey`.
+//! Preshared-key engine for the Rust authentication contract.
 //!
 //! One static set of opaque bearer keys. Validation is set membership,
 //! nothing more — an authenticated key yields an **empty claim bag**: no
@@ -11,9 +10,8 @@
 //! distributor hands to one of N clients. An empty configuration mints
 //! the empty credential.
 //!
-//! Divergence: the Go engine's empty-configuration rejection is a plain
-//! Go error outside the taxonomy; here it is
-//! [`AuthnError::Unauthenticated`] — same outcome, typed surface.
+//! An empty-configuration rejection surfaces as
+//! [`AuthnError::Unauthenticated`] — a typed error, not a plain one.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -52,7 +50,7 @@ impl PresharedKeyAuthenticator {
         Self { options }
     }
 
-    /// The Go getRandomKey: a uniformly random key from the set, or the
+    /// A uniformly random key from the set, or the
     /// empty string for an empty configuration.
     fn random_key(&self) -> String {
         let count = self.options.keys.len();
@@ -77,7 +75,7 @@ impl Authenticator for PresharedKeyAuthenticator {
     }
 
     fn authenticate_token(&self, token: &str) -> Result<AuthClaims, AuthnError> {
-        // The Go engine's two failure modes — empty configuration and
+        // The two failure modes — empty configuration and
         // unknown key — both reject.
         if self.options.keys.is_empty() {
             return Err(AuthnError::Unauthenticated);
@@ -91,7 +89,7 @@ impl Authenticator for PresharedKeyAuthenticator {
     }
 
     fn create_identity(&self, _claims: &AuthClaims) -> Result<String, AuthnError> {
-        // The Go mint: a random key from the set; the empty string when
+        // Minting: a random key from the set; the empty string when
         // the set is empty — no error in either case.
         Ok(self.random_key())
     }
@@ -180,7 +178,7 @@ mod tests {
 
     #[test]
     fn mint_from_an_empty_configuration_is_the_empty_credential() {
-        // The Go mint with no keys: ("", nil) — faithfully silly.
+        // No keys configured: the empty credential, no error.
         let auth = PresharedKeyAuthenticator::new(PresharedKeyOptions::new());
         assert_eq!(auth.create_identity(&AuthClaims::new()).unwrap(), "");
     }

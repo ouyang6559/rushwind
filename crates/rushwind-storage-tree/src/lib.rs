@@ -1,5 +1,4 @@
-//! Tree traversal over any [`Repository`] — the portable counterpart of
-//! go-crud's Ent tree queries.
+//! Tree traversal over any [`Repository`].
 //!
 //! The convention: a table is hierarchical when it declares a `parent_id`
 //! integer column (`NULL` = root). On top of that single column this crate

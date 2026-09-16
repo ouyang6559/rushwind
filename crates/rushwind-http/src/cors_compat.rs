@@ -1,6 +1,6 @@
-//! The gorilla-compatible CORS layer — a 1:1 port of
-//! `gorilla/handlers@v1.5.2/cors.go`'s ServeHTTP, for parity with
-//! deployments that wire their CORS through that package as a
+//! The gorilla-compatible CORS layer — byte-for-byte the ServeHTTP
+//! behavior of `gorilla/handlers@v1.5.2`, for deployments that wire
+//! their CORS through that package as a
 //! server-level filter.
 //!
 //! It diverges from tower-http's CORS (the [`crate::cors`] path) in
@@ -132,10 +132,11 @@ impl CompatCors {
     }
 }
 
-/// The port of Go's `http.CanonicalHeaderKey` for valid tokens: the first
+/// Canonicalizes a header key the way `http.CanonicalHeaderKey` does for
+/// valid tokens: the first
 /// letter and every letter after `-` uppercased, the rest lowercased;
-/// anything else maps to the empty string (the Go function returns ""
-/// for invalid tokens).
+/// anything else maps to the empty string (invalid tokens canonicalize
+/// to "").
 fn canonical_header_key(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut upper_next = true;

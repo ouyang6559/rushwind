@@ -5,7 +5,7 @@
 ///
 /// The wire format of this struct — the exact layout written to and read
 /// from registry backends — is specified in the `rushwind-protocols`
-/// repository and shared verbatim with the Go implementation (`go-wind`).
+/// repository.
 /// Serialization adapters must be built against that spec and validated with
 /// its golden vectors.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

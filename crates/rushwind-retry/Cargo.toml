@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-retry"
-description = "Composable retry for RushWind: exponential backoff with jitter, retry predicates, and total timeout, extracted from go-wind-plugins/retry."
+description = "Composable retry for RushWind: exponential backoff with jitter, retry predicates, and total timeout."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

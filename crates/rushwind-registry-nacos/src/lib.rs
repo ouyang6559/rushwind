@@ -1,12 +1,12 @@
 //! Nacos adapter for the RushWind registry contract — registration and
-//! discovery, ported from `go-wind-plugins/registry/nacos` onto the
-//! `nacos-sdk` naming client, the same client the Go adapter uses.
+//! discovery over the
+//! `nacos-sdk` naming client.
 //!
 //! # Registration
 //!
 //! Each endpoint registers as its own nacos instance under the
 //! service name `{name}.{scheme}`, in the configured cluster and group
-//! (defaults `DEFAULT` and `DEFAULT_GROUP`). The go-wind round-trip
+//! (defaults `DEFAULT` and `DEFAULT_GROUP`). The rush-wind round-trip
 //! data rides in the instance metadata: `kind` (the endpoint's URL
 //! scheme) and `version`. All instances are ephemeral and the SDK's
 //! own connection machinery keeps them alive; there is no per-handle
@@ -15,20 +15,19 @@
 //!
 //! # Discovery
 //!
-//! [`Discovery::get_service`] is the Go `SelectInstances` shape:
-//! healthy-only, subscribe off. [`Discovery::watch`] subscribes
+//! [`Discovery::get_service`] is healthy-only with
+//! subscription off. [`Discovery::watch`] subscribes
 //! through the SDK; its push notifications signal the watcher, whose
-//! every [`Watcher::next`] call — the first one included, mirroring
-//! the Go watcher's queued creation signal — re-reads the SDK's
+//! every [`Watcher::next`] call — the first one included — re-reads the
+//! SDK's
 //! pushed instance cache and rebuilds the instance list from the
 //! `kind`/`version` metadata.
 //!
-//! # Divergences from the Go adapter
+//! # Behavior notes
 //!
-//! - A stopped watcher's SDK subscription is not withdrawn (the Go
-//!   `Stop` unsubscribes); its signals are dropped once the watcher
-//!   is gone.
-//! - The `weight` metadata the Go adapter re-imports has no Rust-side
+//! - A stopped watcher's SDK subscription is not withdrawn; its
+//!   signals are dropped once the watcher is gone.
+//! - The `weight` metadata has no Rust-side
 //!   [`Instance`] field and is dropped on the rebuild.
 //!
 //! # Testing
@@ -60,7 +59,7 @@ struct Inner {
     weight: f64,
 }
 
-/// Options mirroring the Go registrar's option surface.
+/// Options for the nacos registrar.
 #[derive(Debug, Clone)]
 pub struct NacosOptions {
     /// The nacos cluster instances register under. Default `DEFAULT`.
@@ -118,7 +117,7 @@ impl NacosRegistry {
     }
 
     /// Constructs from the bootstrap factory's settings wire shape:
-    /// `addr` (required). All nacos-side knobs stay at their Go
+    /// `addr` (required). All nacos-side knobs stay at their
     /// defaults.
     pub async fn from_settings(settings: serde_json::Value) -> Result<Self, RegistryError> {
         let settings: NacosSettings = serde_json::from_value(settings)
@@ -145,7 +144,7 @@ impl Registrar for NacosRegistry {
                 let Some((scheme, host, port)) = split_endpoint(endpoint) else {
                     return Err(RegistryError::Failed(format!("endpoint parse: {endpoint}")));
                 };
-                // The go-wind round-trip data rides in the instance
+                // The rush-wind round-trip data rides in the instance
                 // metadata: the endpoint's scheme and the version,
                 // merged over any registration metadata. A `weight`
                 // entry overrides the configured weight.
@@ -240,7 +239,7 @@ impl Discovery for NacosRegistry {
         service_name: &'a str,
     ) -> BoxFuture<'a, Result<Vec<Instance>, RegistryError>> {
         Box::pin(async move {
-            // The Go SelectInstances shape: healthy-only, no
+            // Healthy-only, no
             // subscription.
             let instances = self
                 .inner
@@ -295,8 +294,7 @@ impl Discovery for NacosRegistry {
 
 /// The nacos-backed [`Watcher`]: signals from the SDK subscription,
 /// each answered with a rebuild of the pushed instance cache. The
-/// first [`Watcher::next`] reads the cache immediately — the Go
-/// watcher's queued creation signal.
+/// first [`Watcher::next`] reads the cache immediately.
 struct NacosWatcher {
     naming: nacos_sdk::api::naming::NamingService,
     service_name: String,
@@ -361,9 +359,9 @@ impl NamingEventListener for SignalListener {
     }
 }
 
-/// Reads the SDK's pushed instance cache and rebuilds the go-wind
+/// Reads the SDK's pushed instance cache and rebuilds the rush-wind
 /// instance list — endpoint URLs from `kind`/`ip`/`port`, version from
-/// the metadata — the Go watcher's `GetService` rebuild.
+/// the metadata.
 async fn pushed_snapshot(
     naming: &nacos_sdk::api::naming::NamingService,
     service_name: &str,
@@ -383,7 +381,7 @@ async fn pushed_snapshot(
     Ok(rebuild(&instances, kind))
 }
 
-/// The go-wind rebuild of SDK instances: `kind`/`version` from the
+/// The rush-wind rebuild of SDK instances: `kind`/`version` from the
 /// instance metadata (the registered round-trip data), the endpoint
 /// URL from `kind`://`ip`:`port`. Everything else the SDK carries —
 /// weight included — has no [`Instance`] field and is dropped.
@@ -413,8 +411,7 @@ fn rebuild(instances: &[ServiceInstance], default_kind: &str) -> Vec<Instance> {
 }
 
 /// Splits an endpoint URL into `(scheme, host, port)`, with the port
-/// defaulting to 0 — the Go register path's `url.Parse` +
-/// ignored-error `ParseUint` shape.
+/// defaulting to 0 when absent or unparseable.
 fn split_endpoint(endpoint: &str) -> Option<(&str, &str, i64)> {
     let separator = endpoint.find("://")?;
     let scheme = &endpoint[..separator];

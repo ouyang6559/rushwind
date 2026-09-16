@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-/// The set of fields a caller wants back — go-crud's `FieldMask`.
+/// The set of fields a caller wants back — a field mask.
 ///
 /// An empty mask means "return everything". When a mask is set, engines
 /// project returned rows down to it; the conformance suite pins the

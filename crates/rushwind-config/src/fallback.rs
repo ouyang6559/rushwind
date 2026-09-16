@@ -16,7 +16,7 @@ use crate::{BoxFuture, Source, ValueStream};
 /// ones. Errors are collected and, if *every* source either failed or
 /// answered "absent", surfaced together: all-fail joins the errors, all
 /// absent resolves to [`ConfigError::Unresolved`], a mix prefers the
-/// joined failures (the Go `errors.Join` shape).
+/// joined failures.
 ///
 /// [`watch_value`](Source::watch_value) merges every watchable
 /// sub-source into one stream: on any sub-source change the **effective**
@@ -25,8 +25,8 @@ use crate::{BoxFuture, Source, ValueStream};
 /// higher-priority answer. Sub-sources that only read are skipped (their
 /// [`ConfigError::NotWatchable`]); if none can watch, the request fails.
 ///
-/// The signal-mode [`watch`](Source::watch) is *not* merged — the Go
-/// composition merges push-mode only.
+/// The signal-mode [`watch`](Source::watch) is *not* merged — only
+/// push-mode watching merges.
 pub struct FallbackSource {
     sources: Vec<Arc<dyn Source>>,
 }
@@ -56,7 +56,7 @@ impl Source for FallbackSource {
                 }
             }
             if !failures.is_empty() {
-                // The Go errors.Join shape: the walked failures win over
+                // Joined failures win over
                 // the "no source resolved this" message.
                 return Err(ConfigError::Failed(failures.join("; ")));
             }
@@ -71,7 +71,7 @@ impl Source for FallbackSource {
         Box::pin(async move {
             // Discover the watchable sub-sources. `NotWatchable` is the
             // "this source cannot watch" marker and is skipped; any other
-            // failure propagates — the Go sub-source-wrap behavior.
+            // failure propagates.
             let mut streams: Vec<Box<dyn ValueStream>> = Vec::new();
             for source in &self.sources {
                 match source.watch_value(key).await {
@@ -95,8 +95,8 @@ impl Source for FallbackSource {
 }
 
 /// The priority-ordered load walk used by the merged stream: first
-/// `Some` wins, everything else — errors included — is skipped. The Go
-/// merge ignores a failed effective re-read and keeps waiting; this walk
+/// `Some` wins, everything else — errors included — is skipped. A failed
+/// effective re-read is ignored and the merge keeps waiting; this walk
 /// answers `Ok(None)` for exactly that case.
 async fn load_through(
     sources: &[Arc<dyn Source>],
@@ -151,8 +151,8 @@ impl ValueStream for FallbackValueStream {
             loop {
                 // Coalesce any parked deliveries: clear them all, then
                 // re-read the effective value once. Unreadable effective
-                // values loop back to re-arm the race, the Go merge's
-                // skip-and-keep-waiting shape.
+                // values loop back to re-arm the race — skip and keep
+                // waiting.
                 if self.subs.iter().any(|slot| slot.parked.is_some()) {
                     for slot in &mut self.subs {
                         slot.parked = None;
@@ -185,7 +185,7 @@ impl ValueStream for FallbackValueStream {
                     .collect();
                 if racing.is_empty() {
                     // Every sub-stream ended: the merged stream ends with
-                    // them, the Go close-when-all-finish behavior.
+                    // them.
                     return None;
                 }
                 while let Some(parked) = racing.next().await {
@@ -379,8 +379,8 @@ mod tests {
 
     #[tokio::test]
     async fn mixed_failures_win_over_the_unresolved_message() {
-        // One failure plus one clean absence: the Go errors.Join shape
-        // surfaces the failure, not the no-source message.
+        // One failure plus one clean absence: the joined failures
+        // surface the failure, not the no-source message.
         let fallback =
             FallbackSource::new(vec![boxed(Failing("boom")), boxed(Static(None))]).unwrap();
         assert!(matches!(
@@ -489,7 +489,7 @@ mod tests {
         assert_eq!(ended, None);
     }
 
-    /// The Go swap-reader semantics: a watched source whose data is
+    /// Swap semantics: a watched source whose data is
     /// replaced between pushes serves the replacement on the effective
     /// re-read.
     #[tokio::test]

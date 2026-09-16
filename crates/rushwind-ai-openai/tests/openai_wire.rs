@@ -399,7 +399,7 @@ async fn embeddings_parse_sorted_by_index() {
         serde_json::json!(["doc one", "doc two"])
     );
 
-    let query = client.embed_query("what is Go?").await.unwrap();
+    let query = client.embed_query("what is Rust?").await.unwrap();
     assert_eq!(query, vec![0.1, 0.2]);
 }
 

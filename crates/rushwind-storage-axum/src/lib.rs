@@ -22,7 +22,7 @@
 //! # The list-query vocabulary
 //!
 //! `GET /?q={...}` takes a **protojson** `PagingRequest` document verbatim
-//! (the same bytes a Go client sends). For ad-hoc callers the individual
+//! (the same bytes any client sends). For ad-hoc callers the individual
 //! parameters spell the same request:
 //!
 //! - `filter` — AIP text (`age >= 10 AND name LIKE "a%"`)

@@ -2,7 +2,7 @@
 //! service container. Compile-gated behind the `live` feature; the
 //! address comes from `REGISTRY_SERVICECOMB_ADDRESS`. These tests pin
 //! the interoperability contract where it matters most — a real
-//! service-center serving the same microservice view a Go-side
+//! service-center serving the same microservice view any external
 //! consumer would see.
 
 #![cfg(feature = "live")]
@@ -32,7 +32,7 @@ fn sample(service: &str, id: &str, port: u16) -> Registration {
 }
 
 /// The round trip: register, find through the v4 API, deregister and
-/// watch it leave. The rebuild carries the Go quirk — the instance
+/// watch it leave. The rebuild carries the server's quirk — the instance
 /// version field is the service id, so it is asserted present-but-
 /// opaque rather than round-tripped.
 #[tokio::test]

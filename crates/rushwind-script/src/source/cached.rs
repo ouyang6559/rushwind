@@ -5,17 +5,17 @@
 //! later loads serve from it. When the remote offers
 //! [`ScriptSource::watch`], the first fetch also opens a watch stream
 //! for the key and subsequent loads consult it: a pending change tick
-//! evicts the entry (the cache refuses, the next load refetches), the
-//! Go invalidation-goroutine behavior. An optional TTL bounds entry
+//! evicts the entry (the cache refuses, the next load refetches). An
+//! optional TTL bounds entry
 //! freshness by wall clock instead.
 //!
-//! Divergence from the Go predecessor: the invalidation goroutine per
+//! Implementation notes: the classic invalidation task per
 //! watched key becomes a lazy drain — each load polls the stored
 //! stream's already-pending signal without blocking, so eviction is
 //! observable by the next load rather than immediately, with no task
 //! boundaries; `Close` is `Drop` (the stored streams die with the
-//! source, and the remote arc releases); the nil-remote constructor
-//! check is dropped (`SharedScriptSource` cannot be null).
+//! source, and the remote arc releases); a null-remote constructor
+//! check is unnecessary (`SharedScriptSource` cannot be null).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -135,7 +135,7 @@ impl ScriptSource for CachedSource {
             };
             self.cache.set(key, &code);
             // The invalidation watch opens only on a key's first
-            // fetch, the Go loaded-gate; a remote that cannot watch
+            // fetch, the loaded-gate; a remote that cannot watch
             // (or whose watch fails) contributes no stream and later
             // loads rely on the TTL or manual invalidation.
             let watch_probe = if was_loaded {

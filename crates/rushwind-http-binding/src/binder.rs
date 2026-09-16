@@ -11,7 +11,7 @@
 //!   failures, non-whitelisted message leaves;
 //! * leaf kinds: grouped scalars, enums by name-then-number, std base64
 //!   bytes, and the well-known whitelist (Timestamp RFC3339Nano, Duration
-//!   via a Go-ParseDuration port, wrappers reduced to scalars, FieldMask
+//!   via the `time.ParseDuration` grammar, wrappers reduced to scalars, FieldMask
 //!   comma+snake normalization, Value string-wrapping, Struct via strict
 //!   protojson — note Struct errors on unknown fields, unlike the body
 //!   codec).
@@ -60,7 +60,7 @@ fn populate_field_values(
 
     // Only the root segment is inspected here; deeper segments are handled
     // by recursing into `populate_field_values` with the remainder of the
-    // path (matching the Go codec's per-segment dispatch).
+    // path (matching the codec's per-segment dispatch).
     let field_name = field_path[0];
     let Some(fd) = get_field_descriptor(&v.descriptor(), field_name) else {
         // Unknown field: silently ignored, whole key dropped.
@@ -129,7 +129,7 @@ fn populate_repeated_field(
     fd: &FieldDescriptor,
     values: &[String],
 ) -> Result<(), String> {
-    // Go appends to the (possibly already populated) list — repeated keys
+    // Appends to the (possibly already populated) list — repeated keys
     // across separate query parameters accumulate.
     let mut items = match v.get_field(fd).into_owned() {
         Value::List(l) => l,
@@ -278,8 +278,9 @@ fn parse_field(fd: &FieldDescriptor, value: &str) -> Result<Value, String> {
     }
 }
 
-/// std-alphabet base64 decode with canonical padding (Go StdEncoding: the
-/// base64 crate's STANDARD engine rejects missing padding exactly like Go).
+/// std-alphabet base64 decode with canonical padding (`StdEncoding`):
+/// the base64 crate's STANDARD engine rejects missing padding exactly
+/// like that spelling.
 fn base64_std_decode(v: &str) -> Result<Vec<u8>, String> {
     use base64::Engine as _;
     base64::engine::general_purpose::STANDARD
@@ -287,7 +288,7 @@ fn base64_std_decode(v: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Ports `jsonSnakeCase` (proto_decode.go): camelCase → snake_case per the
+/// `jsonSnakeCase` (proto_decode.go) semantics: camelCase → snake_case per the
 /// protobuf JSON field-name normalization.
 fn json_snake_case(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -302,12 +303,12 @@ fn json_snake_case(s: &str) -> String {
     out
 }
 
-/// Ports `parseMessage`: the well-known whitelist. Everything outside the
+/// `parseMessage` semantics: the well-known whitelist. Everything outside the
 /// whitelist is `unsupported message type` — matching the codec exactly.
 fn parse_message(md: &MessageDescriptor, value: &str) -> Result<Value, String> {
     match md.full_name() {
         "google.protobuf.Timestamp" => {
-            // Go: time.ParseInLocation(time.RFC3339Nano, v, time.Local) —
+            // `time.ParseInLocation(time.RFC3339Nano, v, time.Local)`:
             // the offset in the text decides the instant; the "local"
             // timezone only matters for inputs without an offset, which
             // RFC3339 requires anyway.
@@ -387,7 +388,7 @@ fn parse_message(md: &MessageDescriptor, value: &str) -> Result<Value, String> {
     }
 }
 
-/// Ports Go `time.ParseDuration` (time/format.go): optional sign, then one
+/// `time.ParseDuration` (time/format.go) semantics: optional sign, then one
 /// or more [number][unit] pairs; fractional values allowed, exponents not;
 /// units ns/us/µs/μs/ms/s/m/h; overflow beyond ~292 years is an error.
 fn go_parse_duration(v: &str) -> Result<(i64, i32), String> {
@@ -478,7 +479,7 @@ fn go_parse_duration(v: &str) -> Result<(i64, i32), String> {
     if !saw_any {
         return Err(err());
     }
-    // Go's overflow bound: math.MaxInt64 nanoseconds (~292 years).
+    // Overflow bound: math.MaxInt64 nanoseconds (~292 years).
     const MAX: u64 = 0x7fff_ffff_ffff_ffff;
     if total_nanos > MAX {
         return Err(err());
@@ -492,7 +493,7 @@ fn go_parse_duration(v: &str) -> Result<(i64, i32), String> {
     Ok((secs, nanos))
 }
 
-/// Ports `strconv.ParseBool`: the exact Go spelling set.
+/// `strconv.ParseBool` semantics: the exact accepted spelling set.
 fn go_parse_bool(v: &str) -> Result<bool, String> {
     match v {
         "1" | "t" | "T" | "true" | "TRUE" | "True" => Ok(true),

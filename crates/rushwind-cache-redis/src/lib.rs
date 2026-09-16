@@ -1,20 +1,18 @@
-//! Redis engine for the RushWind cache contract — the Go
-//! `go-wind-plugins/cache/redis` ported onto the `redis` crate.
+//! Redis engine for the RushWind cache contract, over the `redis` crate.
 //!
 //! # The wire behavior
 //!
-//! Identical to the Go adapter's: GET / SET / SETNX / DEL / EXISTS
-//! for the single-key operations, native MGET for
-//! [`Cache::get_multi`] (one round-trip regardless of key count) and
-//! a pipelined batch of SETs for [`Cache::set_multi`]. Values are raw
+//! Single-key operations map to GET / SET / SETNX / DEL / EXISTS;
+//! [`Cache::get_multi`] uses native MGET
+//! (one round-trip regardless of key count) and
+//! a pipelined batch of SETs serves [`Cache::set_multi`]. Values are raw
 //! bytes; serialization is the caller's business. An optional key
-//! prefix namespaces every key — the Go `WithKeyPrefix`.
+//! prefix namespaces every key.
 //!
 //! TTL mapping: `Some(ttl)` becomes SET's EX; `None` stores without
-//! expiry — the Go zero-duration semantics. On SetNX the Go adapter
-//! forwards the zero duration too (Redis SET NX without EX = a
-//! lock held until explicitly deleted), and this port preserves
-//! that.
+//! expiry. SetNX forwards the zero duration too: Redis SET NX without
+//! EX is a lock held until explicitly deleted, and this engine
+//! preserves that.
 //!
 //! # Testing
 //!
@@ -126,7 +124,7 @@ impl Cache for RedisCache {
                 }
             };
             let mut connection = self.inner.connection.clone();
-            // The Go adapter forwards the zero duration: SET NX without
+            // A `None` TTL forwards the zero duration: SET NX without
             // EX holds the lock until explicitly deleted.
             let set: Option<()> = redis::AsyncCommands::set_options(
                 &mut connection,
@@ -204,8 +202,7 @@ impl Cache for RedisCache {
     }
 
     fn close(&self) -> BoxFuture<'_, Result<(), CacheError>> {
-        // The Go redis Close does not close the client; the
-        // connection manager drops with the engine.
+        // A no-op: the connection manager drops with the engine.
         Box::pin(async move { Ok(()) })
     }
 }

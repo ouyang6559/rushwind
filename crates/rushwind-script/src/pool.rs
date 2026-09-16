@@ -1,24 +1,22 @@
 //! The fixed-size engine pool: `size` engines built up front through
 //! the factory registry, lent out one at a time.
 //!
-//! The Go predecessor backs the pool with a buffered channel of
-//! engines plus a closed flag; the port is the standard
-//! queue-plus-counting-semaphore rendering of that shape — every
+//! The pool is the standard
+//! queue-plus-counting-semaphore rendering of a lent-out engine set — every
 //! queued engine has exactly one permit, acquiring consumes a permit
 //! and dequeues, releasing enqueues and re-adds one — with
-//! [`Semaphore::close`] playing the Go `close(chan)` that wakes every
+//! [`Semaphore::close`] waking every
 //! blocked acquirer as a failure.
 //!
-//! The per-call wrapper methods follow the Go pool's acquire-invoke-
+//! The per-call wrapper methods follow an acquire-invoke-
 //! release pattern so callers avoid the boilerplate for one-shot use.
 //! The binding they leave behind (source, globals, functions, modules)
 //! is **local to the engine instance they happened to acquire** — for
 //! pool-wide setup, acquire and configure each engine yourself.
 //!
-//! Divergence from the Go predecessor: `Release(nil)` is dropped
-//! (`SharedEngine` cannot be null), and the Go send-on-closed-channel
-//! panic guard collapses into the closed flag plus the queue bound,
-//! which together make an overflowing queue unreachable.
+//! A null-engine release is unnecessary (`SharedEngine` cannot be
+//! null), and the closed flag plus the queue bound
+//! together make an overflowing queue unreachable.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -43,7 +41,7 @@ impl EnginePool {
     ///
     /// On any construction or initialization failure every engine
     /// created so far — including the failing one — is closed and the
-    /// pool is not built, the Go cleanup shape.
+    /// pool is not built.
     pub async fn new(size: usize, typ: &str) -> Result<Self, ScriptError> {
         if size < 1 {
             return Err(ScriptError::Failed(
@@ -168,7 +166,7 @@ impl EnginePool {
 
     /// Re-initializes every engine in the pool: acquires them all,
     /// initializes each, and releases them back. On any failure every
-    /// acquired engine is closed, the Go `InitAll` cleanup shape.
+    /// acquired engine is closed.
     pub async fn init_all(&self) -> Result<(), ScriptError> {
         let mut engines: Vec<SharedEngine> = Vec::with_capacity(self.size);
         for _ in 0..self.size {

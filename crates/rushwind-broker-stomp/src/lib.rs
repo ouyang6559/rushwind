@@ -1,7 +1,6 @@
 //! STOMP engine for the RushWind broker contract — a minimal STOMP
-//! 1.2 client hand-rolled over tokio TCP, sized to exactly what the
-//! Go `go-wind-plugins/broker/stomp` engine uses (the go-stomp
-//! client's CONNECT/SEND/SUBSCRIBE/UNSUBSCRIBE/DISCONNECT surface).
+//! 1.2 client hand-rolled over tokio TCP, covering the
+//! CONNECT/SEND/SUBSCRIBE/UNSUBSCRIBE/DISCONNECT surface.
 //!
 //! # The wire behavior
 //!
@@ -19,9 +18,9 @@
 //! and multiplexes outbound frames (publishes, unsubscribes) with
 //! inbound MESSAGE routing. A broken connection re-dials with a
 //! doubling backoff capped at thirty seconds and replays the
-//! subscriptions — the Go engine's reconnect shape.
+//! subscriptions.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
 //! - STOMP frames carry no headers on the default path here; the
 //!   payload travels alone, as in the MQTT and Redis engines.

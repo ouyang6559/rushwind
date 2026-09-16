@@ -1,24 +1,22 @@
-//! Kubernetes adapter for the RushWind registry contract — ported
-//! from `go-wind-plugins/registry/kubernetes` onto the `kube` client.
+//! Kubernetes adapter for the RushWind registry, over the `kube` client.
 //! It runs **in-cluster only**: registration patches the owning pod's
 //! own labels and annotations, and discovery reads pods through the
 //! API server the pod's service account can see.
 //!
 //! # The wire contract
 //!
-//! Service identity rides on the owning pod, exactly as in the Go
-//! adapter:
+//! Service identity rides on the owning pod:
 //!
 //! - Labels `wind-service-id`, `wind-service-app`,
 //!   `wind-service-version` carry the instance identity.
 //! - Annotations `wind-service-metadata` (JSON object or `null`) and
 //!   `wind-service-protocols` (a JSON map from container port to
-//!   endpoint scheme) carry the go-wind round-trip data.
+//!   endpoint scheme) carry the rush-wind round-trip data.
 //!
 //! [`Registrar::register`] strategic-merge-patches those onto the pod
 //! named by `HOSTNAME` in the namespace the service account file
 //! names; [`Registrar::deregister`] blanks the labels and resets both
-//! annotations to `{}` — the Go deregistration shape.
+//! annotations to `{}`.
 //!
 //! # Discovery
 //!
@@ -27,21 +25,20 @@
 //! labels plus the annotations — endpoints from the pod IP and every
 //! container port, the scheme from the protocol map when it names the
 //! port and from the container-port name prefix or the IP protocol
-//! otherwise, exactly the Go rebuild order.
+//! otherwise.
 //!
 //! [`Discovery::watch`] runs a `kube` watcher on the same label
 //! selector; **every** event it emits — the initialization series
-//! included, mirroring the Go informer's add/update/delete handlers —
+//! included —
 //! triggers a fresh full-list read that updates the service cache and
-//! wakes its watchers. A ten-minute ticker mirrors the Go informer's
+//! wakes its watchers. A ten-minute ticker provides periodic
 //! resync announcements.
 //!
-//! # Divergences from the Go adapter
+//! # Behavior notes
 //!
 //! - `Start()` is fused into [`Discovery::watch`]: the watcher runs
 //!   from creation, not from a separate informer start.
-//! - The Go handlers panic on a failed re-list; this port skips the
-//!   broadcast instead.
+//! - A failed re-list skips the broadcast instead of aborting.
 //! - The wire `metadata` annotation is parsed and dropped on the
 //!   rebuild: the Rust [`Instance`] has no metadata field.
 //!
@@ -80,18 +77,18 @@ const ANNOTATION_METADATA: &str = "wind-service-metadata";
 /// Annotation carrying the JSON port-to-scheme map.
 const ANNOTATION_PROTOCOLS: &str = "wind-service-protocols";
 
-/// The Go informer's resync period, mirrored as a re-list broadcast.
+/// The resync period: every tick triggers a re-list broadcast.
 const RESYNC: Duration = Duration::from_secs(600);
 
 struct Inner {
     client: Client,
     /// The namespace the listing API is scoped to; empty means all
-    /// namespaces, the Go factory's `NamespaceAll`.
+    /// namespaces.
     namespace: String,
-    /// The owning pod's namespace, from the service account file —
-    /// the Go `GetNamespace`. Patches always target this.
+    /// The owning pod's namespace, from the service account file.
+    /// Patches always target this.
     own_namespace: String,
-    /// The owning pod's name, from `HOSTNAME` — the Go `GetPodName`.
+    /// The owning pod's name, from `HOSTNAME`.
     own_pod_name: String,
     /// Watched services, created on first [`Discovery::watch`].
     sets: Mutex<HashMap<String, Arc<ServiceSet>>>,
@@ -111,15 +108,14 @@ pub struct KubernetesRegistry {
 
 impl KubernetesRegistry {
     /// Connects against the in-cluster service account, listing pods
-    /// across all namespaces — the Go `New(clientSet, "")` shape.
+    /// across all namespaces.
     pub async fn connect() -> Result<Self, RegistryError> {
         Self::connect_with("").await
     }
 
     /// Connects with the listing namespace scoped to `namespace`
     /// (empty = all namespaces). The namespace the service account
-    /// file names is read here, exactly once, as the Go package-init
-    /// does.
+    /// file names is read here, exactly once.
     pub async fn connect_with(namespace: &str) -> Result<Self, RegistryError> {
         let config = Config::incluster()
             .map_err(|e| RegistryError::Failed(format!("kubernetes in-cluster config: {e}")))?;
@@ -194,7 +190,7 @@ impl Registrar for KubernetesRegistry {
         _registration: Registration,
     ) -> BoxFuture<'a, Result<(), RegistryError>> {
         Box::pin(async move {
-            // The Go deregistration: a registration patch with every
+            // Deregistration: a registration patch with every
             // field blanked and both annotations reset to `{}`.
             let patch_body = build_patch("", "", "", "{}".to_string(), "{}");
             self.patch_own_pod(patch_body).await
@@ -252,8 +248,8 @@ impl Discovery for KubernetesRegistry {
                 }
             };
 
-            // Only a newly created set runs a watcher, fusing the Go
-            // factory's Start into the watch creation.
+            // Only a newly created set runs a watcher, started with
+            // the watch creation.
             if spawned {
                 let api = self.pod_api(&self.inner.namespace);
                 let name = service_name.to_string();
@@ -272,11 +268,11 @@ impl Discovery for KubernetesRegistry {
 }
 
 /// The watcher task: a `kube` watcher on the service's label selector
-/// plus the Go informer's ten-minute resync ticker. Every event —
-/// initialization included, the Go add/update/delete handler shape —
+/// plus a ten-minute resync ticker. Every event —
+/// initialization included —
 /// and every tick trigger a fresh full-list read that replaces the
 /// service cache and wakes its watchers. Failed reads skip the
-/// broadcast where the Go handlers panic.
+/// broadcast.
 async fn watcher_task(api: Api<Pod>, service_name: String, set: Arc<ServiceSet>) {
     let selector = format!("{LABEL_SERVICE_NAME}={service_name}");
     let stream = kube_runtime::watcher::watcher(
@@ -300,7 +296,7 @@ async fn watcher_task(api: Api<Pod>, service_name: String, set: Arc<ServiceSet>)
 }
 
 /// The Kubernetes-backed [`Watcher`]: a receiver on the watched
-/// service's broadcast cache. Unlike the Go iterator there is no
+/// service's broadcast cache. There is no
 /// establishment shortcut — the initialization events of the
 /// underlying watcher provide the first snapshot.
 struct KubernetesWatcher {
@@ -332,7 +328,7 @@ impl Drop for KubernetesWatcher {
     }
 }
 
-/// Builds the strategic-merge patch body the Go registrar sends: the
+/// Builds the strategic-merge patch body: the
 /// identity labels and the two annotations, with `""`/`{}` values for
 /// the deregistration shape.
 fn build_patch(
@@ -357,10 +353,9 @@ fn build_patch(
     })
 }
 
-/// Builds the port-to-scheme map from the registration's endpoints —
-/// the Go `getProtocolMapByEndpoints`, with the Go quirk that an
-/// endpoint without a port writes the empty-string key, and with an
-/// unparseable endpoint aborting the registration as the Go one does.
+/// Builds the port-to-scheme map from the registration's endpoints; an
+/// endpoint without a port writes the empty-string key, and an
+/// unparseable endpoint aborts the registration.
 fn build_protocol_map(registration: &Registration) -> Result<String, RegistryError> {
     let mut map = HashMap::new();
     for endpoint in &registration.instance.endpoints {
@@ -377,7 +372,7 @@ fn build_protocol_map(registration: &Registration) -> Result<String, RegistryErr
     Ok(serde_json::to_string(&map).unwrap_or_default())
 }
 
-/// The Go `getServiceInstanceFromPod` rebuild: identity from the
+/// The instance rebuild from a pod: identity from the
 /// labels, endpoints from the pod IP and every container port with the
 /// protocol-map / port-name-prefix / IP-protocol fallback chain.
 /// Non-`Running` pods skip (`Ok(None)`), and malformed annotations
@@ -440,7 +435,7 @@ fn rebuild_instance(pod: &Pod) -> Result<Option<Instance>, RegistryError> {
 }
 
 /// Lists the pods labeled for `service_name` and rebuilds their
-/// instances — the Go lister path with its Running-only filter.
+/// instances, with a Running-only filter.
 async fn list_instances(
     api: &Api<Pod>,
     service_name: &str,
@@ -460,7 +455,7 @@ async fn list_instances(
     Ok(instances)
 }
 
-/// The Go `isEmptyObjectString` gate plus the JSON object parse
+/// The empty-sentinel gate plus the JSON object parse
 /// behind it: empty sentinel strings yield an empty map, parse errors
 /// propagate.
 fn parse_object_string(value: &str) -> Result<HashMap<String, String>, RegistryError> {
@@ -472,8 +467,7 @@ fn parse_object_string(value: &str) -> Result<HashMap<String, String>, RegistryE
 }
 
 /// Splits an endpoint URL into `(scheme, host, port)`, with the port
-/// defaulting to 0 — the Go register path's `url.Parse` +
-/// ignored-error `ParseUint` shape.
+/// defaulting to 0 when absent or unparseable.
 fn split_endpoint(endpoint: &str) -> Option<(&str, &str, i64)> {
     let separator = endpoint.find("://")?;
     let scheme = &endpoint[..separator];

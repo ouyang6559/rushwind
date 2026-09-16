@@ -1,31 +1,30 @@
-//! Redis engine for the RushWind broker contract — the Go
-//! `go-wind-plugins/broker/redis` pub-sub mode ported onto the `redis`
+//! Redis engine for the RushWind broker, pub-sub mode over the `redis`
 //! crate.
 //!
 //! # The wire behavior
 //!
-//! Identical to the Go pub-sub engine's: publishes are `PUBLISH
-//! topic payload` — payload-only, headers and metadata have no Redis
+//! Publishes are `PUBLISH
+//! topic payload` — payload-only; headers and metadata have no Redis
 //! carrier. Each subscription owns a dedicated connection in
 //! SUBSCRIBE mode (Redis turns a subscribed connection into a
 //! push-only channel), reading `message` events and routing them to
-//! the handler. Exact topics only — the Go engine subscribes without
-//! patterns, so there is no wildcard matching here, unlike the MQTT
+//! the handler. Exact topics only — subscriptions use no patterns,
+//! so there is no wildcard matching, unlike the MQTT
 //! engine.
 //!
 //! Redis pub/sub has no acknowledgment and no persistence: a
 //! delivery is at-most-once, the event's ack is a no-op, and
 //! unsubscribing drops the connection — after which the topic's
-//! messages are simply never seen, the Go subscriber's
-//! `conn.Close` semantics.
+//! messages are simply never seen; the subscription's connection
+//! is closed with it.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
-//! - Publishes ride a shared multiplexed connection; the Go engine
-//!   pulls a pooled connection per publish.
-//! - The Go `stream` mode (Redis Streams with consumer groups) is
-//!   not ported — it is a different delivery contract (at-least-once,
-//!   acknowledgments, replay) and would be its own engine.
+//! - Publishes ride a shared multiplexed connection.
+//! - A Redis Streams mode (consumer groups) is
+//!   not implemented — it is a different delivery contract
+//!   (at-least-once, acknowledgments, replay) and would be its own
+//!   engine.
 //!
 //! # Testing
 //!
@@ -92,7 +91,7 @@ impl Broker for RedisBroker {
 
     fn connect(&self) -> BoxFuture<'_, Result<(), BrokerError>> {
         // The pub-sub engine connects lazily per publish and per
-        // subscription, as the Go pool does.
+        // subscription.
         Box::pin(async move { Ok(()) })
     }
 
@@ -108,7 +107,7 @@ impl Broker for RedisBroker {
         message: Message,
     ) -> BoxFuture<'a, Result<(), BrokerError>> {
         Box::pin(async move {
-            // The Go engine publishes payload-only through PUBLISH.
+            // Publishes are payload-only, through PUBLISH.
             let mut connection = self
                 .inner
                 .client
@@ -129,7 +128,7 @@ impl Broker for RedisBroker {
     ) -> BoxFuture<'a, Result<Box<dyn Subscriber>, BrokerError>> {
         Box::pin(async move {
             // A subscribed Redis connection is push-only: each
-            // subscription owns one, exactly like the Go PubSubConn.
+            // subscription owns one.
             let mut pubsub = self
                 .inner
                 .client
@@ -193,8 +192,7 @@ impl Subscriber for RedisSubscriber {
         Box::pin(async move {
             self.inner.subscriptions.lock().await.remove(&self.topic);
             // Cancel ends the reader task; awaiting it closes the
-            // subscribed connection before returning — the Go
-            // conn.Close, with the close observed.
+            // subscribed connection before returning.
             self.done.cancel();
             if let Some(reader) = self.reader.lock().await.take() {
                 let _ = reader.await;

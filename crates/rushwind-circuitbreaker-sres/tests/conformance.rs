@@ -16,7 +16,7 @@ fn breaker() -> SreBreaker {
     })
 }
 
-/// With zero traffic, acceptance is 1.0 — always allowed (the Go
+/// With zero traffic, acceptance is 1.0 — always allowed (the
 /// "no data yet — allow" branch). After successes, acceptance
 /// decays toward requests/(requests+1), so the overwhelming
 /// majority still pass.
@@ -24,7 +24,7 @@ fn breaker() -> SreBreaker {
 fn no_errors_always_accepts() {
     let b = breaker();
 
-    // Zero traffic: the Go "no data yet — allow" branch.
+    // Zero traffic: the "no data yet — allow" branch.
     for _ in 0..20 {
         assert!(b.allow(), "with no data yet, allow must always pass");
     }
@@ -82,7 +82,7 @@ fn success_after_failures_recovers() {
             rejected += 1;
         } else {
             // Only executed requests count — a rejected request must
-            // not be marked (the Go contract: don't mark after a
+            // not be marked (the contract: don't mark after a
             // failed Allow).
             b.mark_failure();
         }

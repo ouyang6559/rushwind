@@ -1,6 +1,5 @@
 //! Hystrix-style circuit breaker for the RushWind circuitbreaker
-//! contract — the Go `go-wind-plugins/circuitbreaker/hystrix` ported
-//! as-is.
+//! contract.
 //!
 //! The Netflix Hystrix model over a fixed-length sliding window:
 //!
@@ -16,7 +15,7 @@
 //!   the sleep timer.
 //!
 //! `State()` performs the Open → HalfOpen transition lazily, so
-//! observing the state also advances the machine — the Go shape.
+//! observing the state also advances the machine.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -41,7 +40,7 @@ struct HystrixState {
     closed: bool,
 }
 
-/// The Hystrix engine's settings — the Go `config` fields.
+/// The Hystrix engine's settings.
 #[derive(Debug, Clone)]
 pub struct HystrixOptions {
     /// The error rate (0–1] that trips the breaker. Default 0.50.
@@ -144,7 +143,8 @@ impl HystrixBreaker {
         }))
     }
 
-    /// The Go `Allow`: closed flows normally; open flows again once
+    /// Admits or rejects a request: closed flows normally; open flows
+    /// again once
     /// the sleep window elapsed (moving to half-open with a single
     /// trial in flight); a trial already in flight rejects.
     fn allow_locked(
@@ -175,7 +175,7 @@ impl HystrixBreaker {
         Ok(())
     }
 
-    /// The Go `evaluateLocked`: trip open when the window's error rate
+    /// Evaluates the window: trip open when the error rate
     /// meets the threshold after enough volume.
     fn evaluate_locked(&self, state: &mut HystrixState) {
         if state.state != ContractState::Closed {
@@ -292,7 +292,7 @@ impl CircuitBreaker for HystrixBreaker {
     }
 
     /// The current state, with the lazy Open → HalfOpen transition
-    /// applied — the Go `State`.
+    /// applied.
     fn state(&self) -> ContractState {
         let mut state = self.state.lock().unwrap();
         if state.state == ContractState::Open && state.opened_at.elapsed() >= self.sleep_window {

@@ -1,14 +1,13 @@
 //! The multi-engine lifecycle manager.
 //!
 //! Namespaces named [`SharedEngine`] instances behind one lock with
-//! uniform init/close sweeps — the Go `Manager` shape. When the
+//! uniform init/close sweeps. When the
 //! application needs a single engine the pools alone are enough; the
 //! manager earns its keep when several engines of several types must
 //! come up and go down together.
 //!
-//! Divergence from the Go predecessor: the Go `Register` rejects a nil
-//! engine, which `Arc` rules out here; the empty-name rejection is
-//! ported, the nil-engine one is dropped.
+//! A nil-engine rejection is unnecessary here — `Arc` cannot be null —
+//! so only the empty-name rejection remains.
 
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -65,7 +64,7 @@ impl Manager {
     /// Calls [`ScriptEngine::init`](crate::ScriptEngine::init) on every
     /// registered engine, aborting on the first failure. The sweep
     /// takes a snapshot under the read lock and initializes outside
-    /// it, the Go shape.
+    /// it.
     pub async fn init_all(&self) -> Result<(), ScriptError> {
         let engines: Vec<SharedEngine> = {
             let inner = self.inner.read().expect("manager lock");
@@ -79,7 +78,7 @@ impl Manager {
 
     /// Closes every registered engine and clears the registry.
     /// Individual close failures are collected and the last one is
-    /// returned, the Go `CloseAll` shape.
+    /// returned.
     pub fn close_all(&self) -> Result<(), ScriptError> {
         let engines: Vec<SharedEngine> = {
             let mut inner = self.inner.write().expect("manager lock");

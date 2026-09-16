@@ -9,11 +9,10 @@
 //! sibling `rushwind-storage-*` crates and implement [`Repository`] against a
 //! specific stack — the same shape the transport line uses for protocol stacks.
 //!
-//! The design mirrors the Go predecessor [go-crud](https://github.com/tx7do/go-crud):
-//! one generic repository interface driving many engines, protobuf-grade
-//! contract types (paging / filtering / sorting / field mask), viewer-scoped
-//! tenancy, and a uniform audit trail. It is **not** a port: the dynamic
-//! reflection of Go becomes an explicit schema + record protocol, and the
+//! The design is built around one generic repository interface driving many
+//! engines, protobuf-grade contract types (paging / filtering / sorting /
+//! field mask), viewer-scoped tenancy, and a uniform audit trail. The
+//! contract is an explicit schema + record protocol, and the
 //! method surface is expressed with boxed futures so the trait stays
 //! object-safe — matching the [`Server`](https://docs.rs/rushwind-transport)
 //! contract's conventions in `rushwind-transport`.

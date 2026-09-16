@@ -1,18 +1,15 @@
 //! The local-filesystem script source.
 //!
 //! Reads scripts straight from the filesystem — no dependencies, the
-//! dev/debug default. The watch capability keeps the Go predecessor's
-//! shape: a one-second mtime poll per watched path signaling on
+//! dev/debug default. The watch capability is a one-second mtime poll
+//! per watched path signaling on
 //! modification, rather than the config domain's directory-notification
-//! engine (the Go script source itself polls; `rushwind-config-file`
-//! diverged from its own predecessor by using notify, and this source
-//! stays faithful to its own).
+//! engine.
 //!
-//! Divergence from the Go predecessor: the watch stream has no
-//! end-of-context termination — dropping the stream is the
-//! cancellation, and the stream otherwise ticks forever; the source's
-//! `mtimes` bookkeeping map (write-only in the predecessor) is
-//! dropped, the stream tracking its own baseline.
+//! Dropping the watch stream is the
+//! cancellation, and the stream otherwise ticks forever; no separate
+//! `mtimes` bookkeeping map is kept — the stream tracks its own
+//! baseline.
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -56,7 +53,7 @@ impl ScriptSource for FileSource {
             let baseline = baseline
                 .map_err(|err| ScriptError::Failed(format!("file source: stat {key:?}: {err}")))?;
             let mut interval = tokio::time::interval(Duration::from_secs(1));
-            // The predecessor's ticker first fires after the interval;
+            // A classic ticker first fires after the interval;
             // a tokio interval fires immediately, so consume that
             // first tick here to keep the cadence at one second.
             interval.tick().await;
@@ -71,7 +68,7 @@ impl ScriptSource for FileSource {
 
 /// The mtime poll stream: one tick per observed modification of the
 /// watched path. Runs until dropped; a vanishing or unreadable path is
-/// skipped for that tick, the Go shape.
+/// skipped for that tick.
 struct FileSignalStream {
     path: PathBuf,
     baseline: SystemTime,

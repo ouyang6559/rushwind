@@ -1,35 +1,32 @@
-//! Tracing contract for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/tracer/otlp`: an OTLP-backed
-//! [`TracerProviderBuilder`] reproducing the Go `New` one-call
+//! Tracing contract for RushWind: an OTLP-backed
+//! [`TracerProviderBuilder`] doing one-call
 //! provider setup, plus W3C trace-context carrier helpers for the
 //! server/client span lifecycle.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! The Go domain is a thin configuration wrapper over
-//! `go.opentelemetry.io/otel`: it configures an OTLP exporter (gRPC
+//! The crate is a thin configuration wrapper over
+//! the `opentelemetry` SDK: it configures an OTLP exporter (gRPC
 //! or HTTP), a ratio sampler, resource attributes, a batch processor,
-//! and installs the global provider plus the W3C `TraceContext` /
+//! and exposes the provider plus the W3C `TraceContext` /
 //! Baggage propagator.
 //!
-//! Rust has no process-global `otel.SetTracerProvider` — the provider
+//! There is no process-global provider registration — the provider
 //! is an explicit value the caller hands to the layers that need it
-//! (it is `Clone`). [`TracerProviderBuilder`] reproduces the Go `New`
-//! options surface: transport choice, sample ratio, batch and export
+//! (it is `Clone`). [`TracerProviderBuilder`]'s options surface:
+//! transport choice, sample ratio, batch and export
 //! timeouts, headers, service name/version.
 //!
 //! Propagation is the W3C `TraceContext` format over a string-map
-//! carrier — the wire shape the Go `propagation.TextMapCarrier`
-//! implementations exchange. [`MapCarrier`] adapts a string map to
+//! carrier. [`MapCarrier`] adapts a string map to
 //! both the extractor and injector halves; [`inject`] and [`extract`]
-//! are the two lifecycle halves of the Go `Tracer.Start` for
+//! are the two lifecycle halves of span handling for
 //! client/outbound and server/inbound spans respectively.
 //!
-//! # Divergences from the Go adapter
+//! # Design notes
 //!
 //! - No global registration: the provider is returned, not installed.
-//! - Baggage propagation is not wired — the Go composite includes
-//!   `propagation.Baggage{}`, but RushWind callers exchange only
+//! - Baggage propagation is not wired — RushWind callers exchange only
 //!   trace context today.
 
 #![forbid(unsafe_code)]
@@ -52,26 +49,26 @@ use opentelemetry_sdk::Resource;
 /// the builder yields without depending on the SDK crate directly.
 pub use opentelemetry_sdk::trace::SdkTracerProvider;
 
-/// The default OTLP export batch timeout — the Go default.
+/// The default OTLP export batch timeout.
 const DEFAULT_BATCH_TIMEOUT: Duration = Duration::from_secs(5);
-/// The default export request timeout — the Go default.
+/// The default export request timeout.
 const DEFAULT_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
-/// The default sample ratio — the Go default (sample everything).
+/// The default sample ratio (sample everything).
 const DEFAULT_SAMPLE_RATIO: f64 = 1.0;
-/// The default tracer name — the Go `defaultTracerName`.
-pub const DEFAULT_TRACER_NAME: &str = "go-wind";
+/// The default tracer name.
+pub const DEFAULT_TRACER_NAME: &str = "rush-wind";
 
-/// The OTLP transport the exporter uses — the Go `useHTTP` switch.
+/// The OTLP transport the exporter uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Transport {
-    /// OTLP over gRPC (the Go default).
+    /// OTLP over gRPC (the default).
     #[default]
     Grpc,
     /// OTLP over HTTP protobuf.
     Http,
 }
 
-/// The OTLP tracer-provider settings — the Go `options`.
+/// The OTLP tracer-provider settings.
 #[derive(Debug, Clone)]
 pub struct OtlpOptions {
     /// The OTLP endpoint as `host:port`. No default — the caller
@@ -111,15 +108,14 @@ impl Default for OtlpOptions {
     }
 }
 
-/// The Go `New`: one call that builds the configured tracing
-/// provider. Unlike the Go adapter there is no global registration —
+/// One call that builds the configured tracing
+/// provider. There is no global registration —
 /// the caller owns the provider (it is `Clone`) and passes it to the
 /// layers that need tracing.
 #[derive(Debug, Clone)]
 pub struct TracerProviderBuilder {
     options: OtlpOptions,
-    /// Overrides the tracer name scopes are created under — the Go
-    /// `WithTracerName`.
+    /// Overrides the tracer name scopes are created under.
     tracer_name: Option<String>,
 }
 
@@ -138,8 +134,8 @@ impl TracerProviderBuilder {
         self
     }
 
-    /// The tracer name scopes are created under — the Go
-    /// `defaultTracerName` unless overridden.
+    /// The tracer name scopes are created under — the
+    /// default unless overridden.
     pub fn resolved_tracer_name(&self) -> String {
         self.tracer_name
             .clone()
@@ -203,9 +199,8 @@ impl TracerProviderBuilder {
         Ok(Self::new(options))
     }
 
-    /// Builds the [`SdkTracerProvider`] — the Go `New` minus the
-    /// global registration. Sampler, resource, and batch processor
-    /// follow the Go configuration.
+    /// Builds the [`SdkTracerProvider`]. Sampler, resource, and batch
+    /// processor follow the configured options.
     pub fn build(self) -> StdResult<SdkTracerProvider, opentelemetry_otlp::ExporterBuildError> {
         let options = self.options;
         let sample_ratio = if (0.0..=1.0).contains(&options.sample_ratio) {
@@ -250,8 +245,7 @@ impl TracerProviderBuilder {
 }
 
 /// The string-map carrier trace context is exchanged through — the
-/// adapter over the Go `propagation.TextMapCarrier` implementations,
-/// which are all string maps at the wire level.
+/// wire level of every text-map propagator.
 #[derive(Debug, Default, Clone)]
 pub struct MapCarrier(pub HashMap<String, String>);
 
@@ -300,13 +294,13 @@ fn headers_to_metadata(headers: &[(String, String)]) -> tonic::metadata::Metadat
     metadata
 }
 
-/// The extract half of the Go `Tracer.Start` for server/consumer
+/// The extract half of the span lifecycle for server/consumer
 /// spans: pulls the remote trace context out of `carrier`.
 pub fn extract(carrier: &MapCarrier) -> Context {
     global::get_text_map_propagator(|propagator| propagator.extract(carrier))
 }
 
-/// The inject half of the Go `Tracer.Start` for client/producer
+/// The inject half of the span lifecycle for client/producer
 /// spans: writes `context`'s trace context into `carrier`.
 pub fn inject(context: &opentelemetry::Context, carrier: &mut MapCarrier) {
     global::get_text_map_propagator(|propagator| {

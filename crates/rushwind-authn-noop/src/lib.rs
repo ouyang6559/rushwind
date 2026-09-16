@@ -1,5 +1,4 @@
-//! Noop engine for the Rust authentication contract, ported from
-//! `go-wind-plugins/security/authn/noop`.
+//! Noop engine for the Rust authentication contract.
 //!
 //! Every credential authenticates to an empty claim bag; every mint
 //! produces an empty credential. Useful as a placeholder where an

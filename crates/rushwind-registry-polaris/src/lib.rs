@@ -1,14 +1,13 @@
 //! Polaris adapter for the RushWind registry contract — registration
 //! and discovery over the polaris v1 HTTP client API, the officially
-//! supported path for languages without a polaris SDK (the Go adapter
-//! rides the SDK's gRPC channel; this port speaks protobuf-JSON to the
-//! same server).
+//! documented path for languages without a polaris SDK. This adapter
+//! speaks protobuf-JSON to the server.
 //!
 //! # Registration
 //!
 //! Each endpoint registers as its own polaris instance under the
-//! service name `{name}{scheme}` — the Go adapter's concatenation
-//! quirk, no separator — with the go-wind round-trip data smuggled
+//! service name `{name}{scheme}` — concatenation, no separator — with
+//! the rush-wind round-trip data smuggled
 //! through instance metadata (`kind` = the endpoint scheme, `version`)
 //! merged over any registration metadata. No health-check object is
 //! attached, so polaris never expires the instance and there is no
@@ -19,25 +18,18 @@
 //!
 //! [`Discovery::get_service`] POSTs a Discover (INSTANCE) request and
 //! rebuilds the healthy instances — endpoints from `kind`/host/port,
-//! version from the metadata — the Go `GetAllInstances` rebuild.
+//! version from the metadata.
 //! [`Discovery::watch`] polls the same discover request and wakes its
-//! watchers whenever the healthy instance list changes; the Go
-//! watcher instead maintains a local list fed by the SDK's gRPC
-//! subscribe events, but the delivered shape — the full current
-//! snapshot on every change, seeded from the initial state — is the
-//! same.
+//! watchers whenever the healthy instance list changes; the delivered
+//! shape is the full current
+//! snapshot on every change, seeded from the initial state.
 //!
-//! # Divergences from the Go adapter
+//! # Behavior notes
 //!
 //! - The wire `metadata` is dropped on the rebuild beyond the
 //!   identity fields: the Rust [`Instance`] has no metadata field.
-//! - Instance weight is registered as 100; the Go options default is
-//!   0, and its TTL/heartbeat pair defaults to a zero-tick ticker —
-//!   unusable defaults that require explicit options on the Go side.
-//! - The name asymmetry is preserved, not fixed: registrations land
-//!   under `{name}{scheme}` while [`Discovery::get_service`] queries
-//!   whatever name the caller passes, so the Go adapter's own
-//!   registrations are invisible to its own bare-name discovery.
+//! - Instance weight is registered as 100 rather than 0, so a
+//!   default-constructed registry produces usable instances.
 //!
 //! # Testing
 //!
@@ -60,7 +52,7 @@ use tokio::sync::watch;
 
 /// The polaris response code for success.
 const CODE_SUCCESS: u32 = 200_000;
-/// The default namespace, matching the Go options default.
+/// The default namespace.
 const DEFAULT_NAMESPACE: &str = "default";
 /// The discovery poll cadence, in seconds.
 const POLL_SECS: u64 = 5;
@@ -168,7 +160,7 @@ impl Registrar for PolarisRegistry {
                 let Some((scheme, host, port)) = split_endpoint(endpoint) else {
                     return Err(RegistryError::Failed(format!("endpoint parse: {endpoint}")));
                 };
-                // The go-wind round-trip data rides in the instance
+                // The rush-wind round-trip data rides in the instance
                 // metadata, merged over any registration metadata.
                 let mut metadata: HashMap<String, String> = registration
                     .metadata
@@ -330,7 +322,7 @@ fn discover_body(service_name: &str, namespace: &str) -> serde_json::Value {
     })
 }
 
-/// The go-wind rebuild of a discover response: healthy instances
+/// The rush-wind rebuild of a discover response: healthy instances
 /// only, identity from the smuggled metadata, the endpoint URL from
 /// `kind`/host/port. Everything else polaris carries has no Rust
 /// [`Instance`] field and is dropped.
@@ -381,8 +373,7 @@ fn rebuild(response: &serde_json::Value, service_name: &str) -> Vec<Instance> {
 }
 
 /// Splits an endpoint URL into `(scheme, host, port)`, with the port
-/// defaulting to 0 — the Go register path's `url.Parse` +
-/// ignored-error `ParseUint` shape.
+/// defaulting to 0 when absent or unparseable.
 fn split_endpoint(endpoint: &str) -> Option<(&str, &str, i64)> {
     let separator = endpoint.find("://")?;
     let scheme = &endpoint[..separator];

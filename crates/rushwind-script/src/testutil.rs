@@ -1,8 +1,8 @@
-//! Test doubles shared by the root-module test suites — the Go
-//! `mockEngine`, its recording factory, and a temp-dir guard.
+//! Test doubles shared by the root-module test suites — a recording
+//! mock engine, its recording factory, and a temp-dir guard.
 //!
 //! `MockEngine` implements the full aggregate plus the sandbox
-//! capability (the Go mock does too); `MockNoSandbox` is the same
+//! capability; `MockNoSandbox` is the same
 //! engine minus sandbox, guarding that `FullEngine` does not embed
 //! it; `LifecycleOnly` implements just the core trait, the
 //! lightweight-engine shape whose every probe answers `None`.
@@ -40,7 +40,7 @@ struct MockState {
 
 macro_rules! mock_struct {
     ($t:ident) => {
-        /// The Go mockEngine: a recording implementation of the
+        /// A recording implementation of the
         /// aggregate capability set (this variant's trait set is
         /// chosen by the impl macros below).
         ///
@@ -546,8 +546,7 @@ impl MockEngineFactory {
     }
 }
 
-/// A registry registration guard: unregistering on drop, the Go
-/// `withFactoryType` cleanup func.
+/// A registry registration guard: unregistering on drop.
 pub struct RegisteredFactory {
     /// The recording factory handle.
     pub factory: Arc<MockEngineFactory>,

@@ -4,10 +4,9 @@ use std::fmt;
 
 /// A script-engine or script-source failure.
 ///
-/// The two sentinel variants mirror the Go package's sentinel errors
-/// (`ErrCapabilityNotSupported`, `ErrQuotaExceeded`), which Go callers
-/// discriminate with `errors.Is`; here the variant itself is the
-/// discrimination. Everything else rides in the message, the
+/// The two sentinel variants ([`ScriptError::CapabilityNotSupported`],
+/// [`ScriptError::QuotaExceeded`]) are discriminated by the variant
+/// itself; everything else rides in the message, the
 /// `ConfigError`/`EncodingError` shape.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -18,7 +17,7 @@ pub enum ScriptError {
     /// The engine does not implement the requested optional capability.
     ///
     /// The default [`crate::ScriptSource::watch`] returns this as the
-    /// runtime form of Go's `Watcher` interface assertion, and the
+    /// runtime capability probe, and the
     /// [`crate::MultiSource`] watch delegation skips sub-sources answering
     /// with it.
     CapabilityNotSupported,

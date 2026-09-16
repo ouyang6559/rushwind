@@ -1,5 +1,4 @@
-//! Composable retry for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/retry`: configurable retry with exponential
+//! Composable retry for RushWind: configurable retry with exponential
 //! backoff and optional jitter (full or equal), a maximum attempt
 //! count and total timeout, retry predicates (deciding which errors
 //! are retryable), and cancellation — here riding the awaited
@@ -20,10 +19,9 @@ use std::time::Duration;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum RetryError<E> {
-    /// All attempts were consumed; carries the final attempt's error
-    /// — the Go `ErrMaxAttempts`.
+    /// All attempts were consumed; carries the final attempt's error.
     MaxAttempts(E),
-    /// The total timeout was exceeded — the Go `ErrTimeout`.
+    /// The total timeout was exceeded.
     Timeout,
 }
 
@@ -38,7 +36,7 @@ impl<E: std::fmt::Display> std::fmt::Display for RetryError<E> {
 
 impl<E: std::error::Error + 'static> std::error::Error for RetryError<E> {}
 
-/// The backoff strategy between attempts — the Go `Backoff` union.
+/// The backoff strategy between attempts.
 #[derive(Debug, Clone, Copy)]
 pub enum Backoff {
     /// A fixed delay between attempts.
@@ -56,7 +54,7 @@ pub enum Backoff {
 
 impl Default for Backoff {
     fn default() -> Self {
-        // The Go defaults: exponential, 200 ms initial, factor 2,
+        // The defaults: exponential, 200 ms initial, factor 2,
         // max 10 s.
         Self::Exponential {
             initial: Duration::from_millis(200),
@@ -85,8 +83,7 @@ impl Backoff {
     }
 }
 
-/// The jitter strategy randomising backoff intervals — the Go
-/// `Jitter` union.
+/// The jitter strategy randomising backoff intervals.
 #[derive(Debug, Clone, Copy, Default)]
 pub enum Jitter {
     /// No randomisation.
@@ -121,7 +118,7 @@ impl Jitter {
     }
 }
 
-/// The retry configuration — the Go `Retrier`.
+/// The retry configuration.
 #[derive(Debug, Clone)]
 pub struct Retrier {
     max_attempts: u32,
@@ -179,8 +176,8 @@ impl Retrier {
     /// Executes the fallible closure, retrying per the configuration
     /// while `is_retryable` accepts the error. A closure error the
     /// predicate rejects surfaces immediately as
-    /// [`RetryError::MaxAttempts`] carrying it — the Go classifier
-    /// decides retryability, not this type.
+    /// [`RetryError::MaxAttempts`] carrying it — the caller's
+    /// predicate decides retryability, not this type.
     pub async fn execute<F, Fut, T, E>(
         &self,
         is_retryable: impl Fn(&E) -> bool,

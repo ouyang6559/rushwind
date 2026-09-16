@@ -1,6 +1,5 @@
 //! Vegas-style circuit breaker for the RushWind circuitbreaker
-//! contract — the Go `go-wind-plugins/circuitbreaker/vegas` ported
-//! as-is.
+//! contract.
 //!
 //! Inspired by TCP Vegas congestion control: the breaker compares the
 //! observed RTT against a baseline (the minimum observed). When the
@@ -13,8 +12,8 @@
 //! The primary input is [`VegasBreaker::record_latency`]; outlier
 //! samples below `min_rtt` / above `max_rtt` are filtered, and the
 //! first `warmup_samples` records only prime the baseline before
-//! evaluation starts — the Go warmup gating. `mark_failure` treats a
-//! repeated failure as maximal latency (the Go shape), and a half-open
+//! evaluation starts (the warmup gate). `mark_failure` treats a
+//! repeated failure as maximal latency by design, and a half-open
 //! trial confirming recovery closes the circuit.
 //!
 //! # Testing
@@ -44,11 +43,11 @@ const DEFAULT_MIN_RTT: Duration = Duration::from_millis(1);
 /// 30 s.
 const DEFAULT_MAX_RTT: Duration = Duration::from_secs(30);
 /// The exponential smoothing weight on the previous current RTT —
-/// the Go `0.875 / 0.125` EWMA pair.
+/// the `0.875 / 0.125` EWMA pair.
 const SMOOTHING_PREVIOUS: f64 = 0.875;
 const SMOOTHING_NEW: f64 = 0.125;
 
-/// The Vegas engine's settings — the Go `config` fields.
+/// The Vegas engine's settings.
 #[derive(Debug, Clone)]
 pub struct VegasOptions {
     /// Degrade when `(currentRTT - baseRTT) / baseRTT > alpha`.
@@ -153,18 +152,18 @@ impl VegasBreaker {
         self.evaluate(&mut state);
     }
 
-    /// The current baseline RTT — the Go `BaseRTT` observability.
+    /// The current baseline RTT, for observability.
     pub fn base_rtt(&self) -> Duration {
         Duration::from_nanos(self.state.lock().unwrap().base_rtt_nanos)
     }
 
-    /// The smoothed current RTT — the Go `CurrentRTT` observability.
+    /// The smoothed current RTT, for observability.
     pub fn current_rtt(&self) -> Duration {
         Duration::from_nanos(self.state.lock().unwrap().current_rtt_nanos)
     }
 
     /// The current RTT inflation ratio (0 when the baseline is not
-    /// established) — the Go `Inflation` observability.
+    /// established), for observability.
     pub fn inflation(&self) -> f64 {
         let state = self.state.lock().unwrap();
         if state.base_rtt_nanos == 0 {
@@ -180,7 +179,7 @@ impl VegasBreaker {
         Duration::from_nanos(self.max_rtt_nanos)
     }
 
-    /// The Go `updateRTTLocked`: filter outliers, count the sample,
+    /// Updates the RTT state: filter outliers, count the sample,
     /// smooth the current RTT (0.875 previous + 0.125 new), and lower
     /// the baseline to new minima.
     fn update_rtt(&self, state: &mut VegasState, rtt: Duration) {
@@ -200,7 +199,7 @@ impl VegasBreaker {
         }
     }
 
-    /// The Go `evaluateLocked`: gate on warmup, then drive the state
+    /// Evaluates the breaker: gate on warmup, then drive the state
     /// machine on the inflation ratio.
     fn evaluate(&self, state: &mut VegasState) {
         if state.sample_count < self.warmup_samples || state.base_rtt_nanos == 0 {
@@ -250,14 +249,14 @@ impl CircuitBreaker for VegasBreaker {
 
     /// Records a zero latency — filtered as an outlier under the
     /// default minimum RTT, so this is effectively a no-op for the
-    /// RTT state. The Go doc says the same; prefer
+    /// RTT state; prefer
     /// [`VegasBreaker::record_latency`].
     fn mark_success(&self) {
         self.record_latency(Duration::ZERO);
     }
 
     /// A half-open trial failure re-opens; repeated failures degrade —
-    /// treated as maximal latency (the Go `MarkFailure`).
+    /// treated as maximal latency.
     fn mark_failure(&self) {
         let mut state = self.state.lock().unwrap();
         if state.state == State::HalfOpen {

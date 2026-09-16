@@ -1,5 +1,5 @@
 //! BBR-inspired adaptive rate limiter for the RushWind ratelimit
-//! contract — the Go `go-wind-plugins/ratelimit/bbr` ported as-is.
+//! contract.
 //!
 //! Unlike a fixed-rate limiter, the BBR limiter estimates the system's
 //! maximum sustainable throughput from observed latency and inflight
@@ -12,14 +12,14 @@
 //!
 //! [`BbrLimiter::allow`] admits a request (incrementing the inflight
 //! count) or rejects it at capacity; the caller reports completion
-//! with [`BbrLimiter::done`], feeding the RTT back into the window —
-//! the Go `Allow`/`Done` pairing. [`Limiter::wait`] polls `allow`
-//! every ten milliseconds, the Go `Wait` loop's cadence.
+//! with [`BbrLimiter::done`], feeding the RTT back into the window
+//! (the `Allow`/`Done` pairing). [`Limiter::wait`] polls `allow`
+//! every ten milliseconds.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
-//! - The Go `Done(rtt)` is inherent to the BBR type (it does not fit
-//!   the base `Limiter` contract); so is the Rust
+//! - `Done(rtt)` is inherent to the BBR type (it does not fit
+//!   the base `Limiter` contract); so is
 //!   [`BbrLimiter::done`]. `MaxInflight` becomes
 //!   [`BbrLimiter::max_inflight`], same semantics.
 
@@ -140,7 +140,7 @@ impl BbrLimiter {
         }
     }
 
-    /// Attempts to admit a request — the Go `Allow`. When admitted,
+    /// Attempts to admit a request. When admitted,
     /// the caller reports completion with [`BbrLimiter::done`].
     pub fn allow(&self) -> bool {
         let mut state = self.state.lock().unwrap();
@@ -164,7 +164,7 @@ impl BbrLimiter {
     }
 
     /// Marks the completion of a previously admitted request — `rtt`
-    /// is the request's end-to-end latency — the Go `Done`.
+    /// is the request's end-to-end latency.
     pub fn done(&self, rtt: Duration) {
         let mut state = self.state.lock().unwrap();
         state.inflight = state.inflight.saturating_sub(1);
@@ -175,14 +175,13 @@ impl BbrLimiter {
         state.buckets[index].total_rtt_nanos += rtt.as_nanos() as u64;
     }
 
-    /// The most recently computed inflight limit — the Go
-    /// `MaxInflight`.
+    /// The most recently computed inflight limit.
     pub fn max_inflight(&self) -> u64 {
         self.state.lock().unwrap().max_inflight
     }
 
     /// Advances the bucket ring to `now`, clearing buckets that fell
-    /// out of the window — the Go `rotateLocked`.
+    /// out of the window.
     fn rotate_locked(&self, state: &mut State, now: Instant) {
         let elapsed = now.duration_since(state.last_bucket_time);
         let steps = (elapsed.as_nanos() / self.bucket_duration.as_nanos()) as usize;
@@ -222,7 +221,7 @@ impl BbrLimiter {
 
     /// The estimated maximum QPS from the sliding window:
     /// `maxQPS = windowSize / minRTT`, floored at the configured
-    /// minimum — the Go `estimateMaxQPSLocked`.
+    /// minimum.
     fn estimate_max_qps_locked(&self, state: &State) -> f64 {
         let mut total_count: u64 = 0;
         let mut min_rtt_nanos: Option<u64> = None;

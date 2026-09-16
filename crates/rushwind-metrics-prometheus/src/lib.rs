@@ -1,9 +1,8 @@
-//! Prometheus engine for the Rust metrics contract, ported from
-//! `go-wind-plugins/metrics/prometheus` over the `prometheus` crate.
+//! Prometheus engine for the Rust metrics contract, over the `prometheus` crate.
 //!
 //! Instruments are **lazily registered** on first use and cached, so
 //! subsequent calls with the same name and label set reuse the existing
-//! instrument — the Go provider's cache tables, one per kind. Labelled
+//! instrument — a per-kind cache table. Labelled
 //! metrics become `*Vec` collectors whose label keys are fixed by the
 //! first call and reused for every later call, values looked up per
 //! call; the label order is the contract's canonical (sorted) one, so
@@ -11,17 +10,18 @@
 //!
 //! This is a **pull** backend: samples live in a [`Registry`]. Expose
 //! them by rendering [`encode`](PrometheusMetrics::encode) on a
-//! `/metrics` route of any HTTP server — the Go engine's
-//! `promhttp.Handler()` mount — or hand [`registry`](PrometheusMetrics::registry)
+//! `/metrics` route of any HTTP server, or hand
+//! [`registry`](PrometheusMetrics::registry)
 //! to a custom gatherer.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | help strings optional (empty) | the Rust client requires one; the engine generates `<name> <kind>` help text |
-//! | `Registry()` returns a `Gatherer` for `promhttp` | [`PrometheusMetrics::registry`] returns the registry, [`PrometheusMetrics::encode`] renders the text format directly |
-//! | registration errors surface from `New` | the constructor is infallible; per-sample creation failures drop the sample, the contract's never-fail rule |
+//! - help strings: the underlying `prometheus` client requires one; the
+//!   engine generates `<name> <kind>` help text
+//! - [`PrometheusMetrics::registry`] returns the registry,
+//!   [`PrometheusMetrics::encode`] renders the text format directly
+//! - the constructor is infallible; per-sample creation failures drop
+//!   the sample, the contract's never-fail rule
 //!
 //! [`Registry`]: prometheus::Registry
 
@@ -42,7 +42,7 @@ pub struct PrometheusOptions {
 }
 
 impl Default for PrometheusOptions {
-    /// The Go `New` default: no namespace, no subsystem, a **fresh**
+    /// The default: no namespace, no subsystem, a **fresh**
     /// registry.
     fn default() -> Self {
         Self {
@@ -59,13 +59,13 @@ impl PrometheusOptions {
         Self::default()
     }
 
-    /// Sets the metric namespace prefix (the Go `Namespace` field).
+    /// Sets the metric namespace prefix.
     pub fn with_namespace(mut self, namespace: &str) -> Self {
         self.namespace = Some(namespace.to_string());
         self
     }
 
-    /// Sets the metric subsystem prefix (the Go `Subsystem` field).
+    /// Sets the metric subsystem prefix.
     pub fn with_subsystem(mut self, subsystem: &str) -> Self {
         self.subsystem = Some(subsystem.to_string());
         self
@@ -73,14 +73,13 @@ impl PrometheusOptions {
 
     /// Replaces the fresh registry — the global default
     /// (`prometheus::default_registry().clone()`) or any shared one.
-    /// The Go `NewWithDefaultRegistry` shape.
     pub fn with_registry(mut self, registry: prometheus::Registry) -> Self {
         self.registry = registry;
         self
     }
 }
 
-/// The per-kind instrument caches, the Go provider's tables.
+/// The per-kind instrument caches.
 struct Tables {
     counters: HashMap<String, prometheus::Counter>,
     counter_vecs: HashMap<String, prometheus::CounterVec>,
@@ -149,7 +148,7 @@ impl PrometheusMetrics {
         encoder.encode_to_string(&families)
     }
 
-    /// The Go `cachedLabelKeys`: the label keys of a metric name, fixed
+    /// The cached label keys of a metric name, fixed
     /// by its first labelled call and reused afterwards. The keys arrive
     /// in canonical (sorted) order.
     fn cached_label_keys(
@@ -167,7 +166,7 @@ impl PrometheusMetrics {
     }
 
     /// Label values ordered along the cached keys; an absent key yields
-    /// the empty string, the Go map-lookup zero value.
+    /// the empty string.
     fn label_values<'a>(labels: &[(&'a str, &'a str)], keys: &[String]) -> Vec<&'a str> {
         keys.iter()
             .map(|key| {
@@ -441,7 +440,7 @@ mod tests {
     #[test]
     fn missing_label_values_default_to_empty() {
         // The first call fixes the keys; a later call missing one
-        // supplies the empty string, the Go zero-value lookup.
+        // supplies the empty string.
         let provider = provider();
         provider.counter("requests_total", 1.0, &[("method", "GET"), ("route", "/a")]);
         provider.counter("requests_total", 1.0, &[("method", "POST")]);
@@ -454,7 +453,7 @@ mod tests {
 
     #[test]
     fn the_default_registry_variant_registers_into_it() {
-        // The Go NewWithDefaultRegistry shape: instruments land in the
+        // The shared-registry shape: instruments land in the
         // global default registry. Namespaced names keep the test from
         // colliding with other tests sharing that process-wide registry.
         let provider = PrometheusMetrics::new(

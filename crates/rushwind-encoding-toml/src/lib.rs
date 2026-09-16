@@ -1,8 +1,7 @@
-//! TOML engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/toml` package ported onto the `toml`
+//! TOML engine for the RushWind encoding contract, over the `toml`
 //! crate.
 //!
-//! One structural divergence from the plain-delegate Go engines: the
+//! Unlike the plain-delegate engines in this workspace: the
 //! `toml` crate exposes no writer-backed `serde::Serializer` for whole
 //! documents, and the erased contract needs one. Marshal therefore
 //! routes the value through `serde_json`'s in-memory value model
@@ -34,7 +33,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `toml.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "toml";
 
 /// The TOML codec. State-free; construct one or fetch it from the
@@ -49,8 +48,7 @@ impl TomlCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the toml codec");
     }

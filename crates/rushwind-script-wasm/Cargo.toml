@@ -1,6 +1,6 @@
 [package]
 name = "rushwind-script-wasm"
-description = "WebAssembly engine for the Rust script contract: module compilation and _start invocation over wasmi, the pure-interpreter counterpart of the Go predecessor's wazero."
+description = "WebAssembly engine for the Rust script contract: module compilation and _start invocation over wasmi."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

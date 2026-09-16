@@ -1,17 +1,16 @@
-//! The error taxonomy for authentication, ported one-to-one from the Go
-//! predecessor's `authn/errors.go` plus the two inline errors of its
-//! `metadata.go`.
+//! The error taxonomy for authentication: one variant per failure mode
+//! across all engines.
 //!
-//! Every variant carries the Go pair of an HTTP status (the semantic
-//! anchor the Go `errors` package attaches) and a stable machine-readable
+//! Every variant carries an HTTP status (the semantic anchor of the
+//! taxonomy) and a stable machine-readable
 //! code, exposed through [`AuthnError::status`] and [`AuthnError::code`].
 //! The status feeds [`crate::AuthenticationGate`]'s rejections; the code
 //! is the stable surface for diagnostics — messages may change, codes do
 //! not.
 //!
 //! Several variants (`InvalidJwtId`, `NoAtHash`, …) have no producing
-//! engine yet: they exist for the unported `oidc`/`mtls`/`oauth2` engines
-//! and keep the taxonomy whole for middleware written against it.
+//! engine yet: they are reserved for the future `oidc`/`mtls`/`oauth2`
+//! engines and keep the taxonomy whole for middleware written against it.
 
 use std::fmt;
 
@@ -65,7 +64,7 @@ pub enum AuthnError {
 }
 
 impl AuthnError {
-    /// The HTTP status the Go taxonomy anchors this error to: 401 for
+    /// The HTTP status anchored to this error: 401 for
     /// authentication failures, 500 for configuration failures.
     pub const fn status(&self) -> u16 {
         match self {
@@ -78,7 +77,7 @@ impl AuthnError {
         }
     }
 
-    /// The stable machine-readable code, shared with the Go predecessor.
+    /// The stable machine-readable code for this error.
     pub const fn code(&self) -> &'static str {
         match self {
             Self::InvalidType => "AUTHN_INVALID_TYPE",
@@ -140,7 +139,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn taxonomy_matches_go_statuses() {
+    fn taxonomy_statuses_are_stable() {
         for (err, status) in [
             (AuthnError::InvalidType, 500),
             (AuthnError::UnsupportedSigningMethod, 500),
@@ -159,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn codes_are_the_go_reason_strings() {
+    fn codes_are_stable_reason_strings() {
         assert_eq!(AuthnError::Unauthenticated.code(), "AUTHN_UNAUTHENTICATED");
         assert_eq!(
             AuthnError::BadAuthorization.code(),

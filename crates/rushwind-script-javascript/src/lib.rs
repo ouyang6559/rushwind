@@ -1,25 +1,24 @@
-//! The JavaScript engine for the Rust script contract — the Go
-//! predecessor's goja engine, rebuilt over [`boa_engine`].
+//! The JavaScript engine for the Rust script contract, built over
+//! [`boa_engine`].
 //!
 //! boa's [`Context`] owns a garbage-collected heap behind `Rc`
 //! handles and is therefore `!Send`, while the contract shares
 //! engines behind `Arc` (which demands `Send + Sync`). The engine is
 //! consequently an **actor**: a dedicated worker thread owns the
 //! [`Context`], and every runtime operation is a command sent down a
-//! channel with the answer coming back on a oneshot. That matches the
-//! predecessor's serialized-execution shape (its `execMu`) — one
-//! script at a time — while keeping the engine object itself freely
+//! channel with the answer coming back on a oneshot. Execution is
+//! serialized — one
+//! script at a time — while the engine object itself stays freely
 //! shareable.
 //!
-//! Semantics preserved from the predecessor:
+//! Semantics:
 //!
 //! - `load` keeps the program source; `execute` runs every loaded
-//!   program in order and answers with the **array** of results (the
-//!   goja engine's shape — unlike Lua/CEL, which answer with
+//!   program in order and answers with the **array** of results
+//!   (unlike Lua/CEL, which answer with
 //!   `Null`/last respectively).
 //! - `register_global`/`get_global` bridge values both ways; a value
-//!   map registered as a module becomes a global object, the
-//!   predecessor's `NewObject` + property-copy shape.
+//!   map registered as a module becomes a global object.
 //! - `call_function` invokes a script-defined function with bridged
 //!   arguments and results.
 //! - Runtime hooks registered before init replay during init; on an
@@ -27,19 +26,18 @@
 //! - `start_watch` reloads the key on source change ticks, the
 //!   weak-task + abort-handle shape.
 //!
-//! Divergences from the Go predecessor:
+//! Divergences and limits:
 //!
 //! - `register_function` **always fails**: registering a capturing
 //!   native closure in boa requires `NativeFunction::from_closure`,
 //!   which is `unsafe` (a lifetime transmute), and the workspace
 //!   forbids unsafe code outright. `call_function` — invoking
-//!   script-defined functions — works as in the predecessor.
-//! - The predecessor armed a wall-clock interrupt through goja's
-//!   `Runtime::Interrupt`; boa offers no interruption point, so the
+//!   script-defined functions — works.
+//! - There is no wall-clock interruption point in boa, so the
 //!   quota is checked post-run — an over-budget run completes and is
 //!   reported after the fact — and the instruction budget has no
 //!   counterpart at all.
-//! - The goja `Program` precompile handle has no boa counterpart;
+//! - Precompiled program handles have no boa counterpart;
 //!   programs are stored as source strings and re-parsed per run.
 //! - The value bridge rides [`serde_json`] through boa's built-in
 //!   JSON converters: the contract's data-only value set maps onto
@@ -52,7 +50,7 @@
 //! |:---|:---|
 //! | loader / executor / globals / modules / watch / runtime hooks / sync+quota (post-hoc) / lifecycle | implemented |
 //! | host functions (`register_function`) | rejected — boa needs unsafe for capturing closures |
-//! | sandbox | not offered by the predecessor's goja engine either |
+//! | sandbox | not offered |
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -72,7 +70,7 @@ use rushwind_script::{
     ScriptWatcher, SharedEngine, SharedScriptSource, SyncExecutor,
 };
 
-/// The registry name — the Go `scriptEngine.JavaScriptType` constant.
+/// The registry name.
 pub const NAME: &str = "javascript";
 
 /// One command for the worker thread that owns the [`Context`].
@@ -194,10 +192,9 @@ impl JsEngine {
         Ok(())
     }
 
-    /// The predecessor's source-fetch step: the bound source's script
+    /// The source-fetch step: the bound source's script
     /// for `key`. [`ScriptLoader::load`] queues the fetched program;
-    /// [`ScriptExecutor::execute_from_key`] runs it alone — the Go
-    /// `Load`/`ExecuteFromKey` fetch duplication.
+    /// [`ScriptExecutor::execute_from_key`] fetches and runs it alone.
     async fn load_code(&self, key: &str) -> Result<String, ScriptError> {
         self.guard_initialized()?;
         let source = self.source.lock().expect("js engine source lock").clone();
@@ -216,8 +213,7 @@ impl JsEngine {
     }
 
     /// Settles a worker reply: a failure is recorded as the engine's
-    /// last error before it propagates — the predecessor records every
-    /// failure its RunProgram path surfaces.
+    /// last error before it propagates.
     fn settle<T>(&self, outcome: Result<T, ScriptError>) -> Result<T, ScriptError> {
         match outcome {
             Ok(value) => Ok(value),
@@ -466,7 +462,7 @@ fn worker_loop(mut receiver: mpsc::UnboundedReceiver<Command>) {
         match command {
             Command::Drop => break,
             Command::EvalAll { codes, reply } => {
-                // The predecessor's Execute: the first failing program
+                // The first failing program
                 // aborts the run — no partial result array comes back.
                 let mut results = Vec::with_capacity(codes.len());
                 let mut failure = None;
@@ -489,7 +485,7 @@ fn worker_loop(mut receiver: mpsc::UnboundedReceiver<Command>) {
                 let _ = reply.send(outcome);
             }
             Command::SetGlobal { name, value, reply } => {
-                // The predecessor's runtime.Set: the bridged value
+                // The bridged value
                 // becomes a global property.
                 let js_value = JsValue::from_json(&bridge::to_json(&value), &mut context)
                     .unwrap_or_else(|_| JsValue::undefined());
@@ -517,11 +513,11 @@ fn worker_loop(mut receiver: mpsc::UnboundedReceiver<Command>) {
                 let _ = reply.send(outcome);
             }
             Command::SetModule { name, value, reply } => {
-                // The predecessor's shape: a map became a NewObject
-                // with the entries copied in, anything else a plain
-                // global. The bridge's from_json builds that object
-                // graph itself, so both branches collapse into the
-                // same registration here.
+                // A value-map module becomes a global
+                // object with the entries copied in, anything else a
+                // plain global. The bridge's from_json builds that
+                // object graph itself, so both branches collapse into
+                // the same registration here.
                 let js_value = JsValue::from_json(&bridge::to_json(&value), &mut context)
                     .unwrap_or_else(|_| JsValue::undefined());
                 let outcome = context
@@ -574,7 +570,7 @@ fn worker_loop(mut receiver: mpsc::UnboundedReceiver<Command>) {
 }
 
 /// One worker-side evaluation: parse and run `code`, bridging the
-/// result — or the failure — back, the predecessor's RunProgram shape.
+/// result — or the failure — back.
 fn worker_eval(context: &mut Context, code: &str) -> Result<ScriptValue, ScriptError> {
     context
         .eval(Source::from_bytes(code))
@@ -594,7 +590,7 @@ impl ScriptLoader for JsEngine {
 
     fn load<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<(), ScriptError>> {
         Box::pin(async move {
-            // The predecessor's Load: fetch, then queue — LoadString's
+            // Fetch, then queue — LoadString's
             // append step.
             let code = self.load_code(key).await?;
             self.programs
@@ -634,9 +630,8 @@ impl ScriptLoader for JsEngine {
 }
 
 impl ScriptExecutor for JsEngine {
-    /// The goja shape: every loaded program runs and the array of
-    /// results comes back — bridged as [`ScriptValue::Array`], the
-    /// Go `[]any` shape.
+    /// Every loaded program runs and the array of
+    /// results comes back — bridged as [`ScriptValue::Array`].
     fn execute(&self) -> BoxFuture<'_, Result<ScriptValue, ScriptError>> {
         Box::pin(async move {
             self.guard_initialized()?;
@@ -661,7 +656,7 @@ impl ScriptExecutor for JsEngine {
         })
     }
 
-    /// The predecessor's from-key shape: the freshly loaded program
+    /// From-key execution: the freshly loaded program
     /// runs **alone** and answers with its single result.
     fn execute_from_key<'a>(
         &'a self,
@@ -906,9 +901,8 @@ impl ScriptWatcher for JsEngine {
 }
 
 /// Builds an engine, arming the weak self-reference the watch tasks
-/// need. The Go predecessor registered this under its JavaScript
-/// type through package `init()`; [`register`] is the explicit Rust
-/// form.
+/// need. [`register`] installs it in the factory registry under
+/// [`NAME`].
 pub fn factory() -> Result<SharedEngine, ScriptError> {
     let engine = Arc::new(JsEngine::new());
     *engine.weak.lock().expect("js engine weak lock") = Arc::downgrade(&engine);
@@ -1148,7 +1142,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn probes_offer_the_predecessor_capability_set() {
+    async fn probes_offer_the_full_capability_set() {
         let engine: Arc<dyn ScriptEngine> = factory().expect("engine");
         assert!(engine.clone().as_loader().is_some());
         assert!(engine.clone().as_executor().is_some());

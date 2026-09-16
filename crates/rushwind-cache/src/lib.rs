@@ -1,21 +1,20 @@
-//! KV cache contract for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/cache`: get/set/SetNX/delete/has plus batch
+//! KV cache contract for RushWind: get/set/SetNX/delete/has plus batch
 //! get/set, all TTL-driven.
 //!
-//! # The Go shapes, translated
+//! # The core shapes
 //!
-//! Go's `ErrNotFound` error signal becomes `Ok(None)`: a missing (or
-//! expired) key is a normal outcome of a read, not an error, and
+//! A missing (or expired) key reads as `Ok(None)` — a normal outcome
+//! of a read, not an error — and
 //! [`Cache::get_multi`] returns `None` entries aligned with the input
-//! keys — no sentinel error when some are missing. Go's zero-TTL
-//! means "use the backend's default" — [`Duration`] options here:
-//! `None` is the backend's default (which may itself mean
+//! keys, with no sentinel error when some are missing. A zero TTL
+//! means "use the backend's default"; the [`Duration`] options here
+//! express that as `None` (which may itself mean
 //! never-expire).
 //!
 //! Values are raw bytes ([`Vec<u8>`]); serialization is the caller's
 //! business. [`Cache::close`] releases engine resources (the local
-//! engine clears, the redis engine is a no-op — the Go redis Close
-//! explicitly does not close the client).
+//! engine clears, the redis engine is a no-op — the underlying
+//! client stays open).
 //!
 //! # Engines
 //!
@@ -50,7 +49,7 @@ impl std::fmt::Display for CacheError {
 
 impl std::error::Error for CacheError {}
 
-/// One key-value entry for batch writes — the Go `cache.Item`.
+/// One key-value entry for batch writes.
 #[derive(Debug, Clone)]
 pub struct Item {
     /// The cache key.
@@ -62,11 +61,11 @@ pub struct Item {
     pub ttl: Option<Duration>,
 }
 
-/// The caching contract — the Go `cache.Cache`. Engines must be
+/// The caching contract. Engines must be
 /// callable through shared references (`&self`).
 pub trait Cache: Send + Sync {
     /// Reads the value for the key; `Ok(None)` when the key is
-    /// missing or expired — the Go `ErrNotFound` outcome.
+    /// missing or expired.
     fn get<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, CacheError>>;
 
     /// Stores the value with a TTL; `None` uses the backend's
@@ -108,8 +107,8 @@ pub trait Cache: Send + Sync {
     /// otherwise.
     fn set_multi<'a>(&'a self, items: &'a [Item]) -> BoxFuture<'a, Result<(), CacheError>>;
 
-    /// Releases engine resources — the Go `Close`. The local engine
-    /// clears its entries; the redis engine is a no-op (its Go Close
-    /// explicitly does not close the client).
+    /// Releases engine resources. The local engine
+    /// clears its entries; the redis engine is a no-op (the
+    /// underlying client stays open).
     fn close(&self) -> BoxFuture<'_, Result<(), CacheError>>;
 }

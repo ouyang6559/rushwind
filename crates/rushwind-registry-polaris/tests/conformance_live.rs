@@ -2,7 +2,7 @@
 //! service container. Compile-gated behind the `live` feature; the
 //! HTTP endpoint comes from `REGISTRY_POLARIS_ADDRESS`. These tests
 //! pin the interoperability contract where it matters most — a real
-//! polaris serving the same instance view a Go-side consumer would
+//! polaris serving the same instance view any external consumer would
 //! see. The name asymmetry is preserved: registrations land under
 //! `{name}{scheme}`, so the assertions query that name.
 

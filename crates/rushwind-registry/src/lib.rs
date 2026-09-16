@@ -1,5 +1,4 @@
-//! Registry contract for RushWind services, extracted from the Go
-//! predecessor `go-wind-plugins/registry`: the one-directional
+//! Registry contract for RushWind services: the one-directional
 //! registration half and the read-only discovery half of its
 //! `Registrar`/`Discovery` pair.
 //!
@@ -9,24 +8,23 @@
 //! reactive change streams via [`Discovery::watch`]. There is no routing;
 //! what a consumer does with an instance list is its own business.
 //!
-//! # The wire contract (extracted, not invented)
+//! # The wire contract
 //!
-//! The key layout and value format are **byte-compatible with the Go
-//! predecessor** so a Go-side console sees Rust services without knowing
-//! they are Rust, and a Rust consumer sees Go ones:
+//! The key layout and value format are **byte-exact**, so external tooling
+//! reads RushWind registrations without special support:
 //!
 //! - Registration key: `{namespace}/{name}/{id}`, and the discovery lookup
 //!   prefix [`service_prefix`] `{namespace}/{name}` — namespace defaults
-//!   to [`DEFAULT_NAMESPACE`] (`/microservices`), matching
-//!   `go-wind-plugins/registry/etcd` `options.namespace`.
-//! - Value: `json.Marshal(wind.Instance)` — fields in declaration order
-//!   (`id`, `name`, `version`, `endpoints`, `metadata`), with a nil Go map
-//!   marshaling as `null`. [`registry_json`] reproduces this byte for byte,
-//!   and [`registry_parse`] is its exact dual; the golden tests pin both
-//!   directions against literal Go output.
+//!   to [`DEFAULT_NAMESPACE`] (`/microservices`), matching the etcd
+//!   registry's `options.namespace`.
+//! - Value: the JSON wire form of `wind.Instance` — fields in declaration
+//!   order (`id`, `name`, `version`, `endpoints`, `metadata`), with `None`
+//!   metadata marshaling as `null`. [`registry_json`] reproduces this byte
+//!   for byte, and [`registry_parse`] is its exact dual; the golden tests
+//!   pin both directions against checked-in wire vectors.
 //!
 //! If the format ever needs to evolve, the spec and its golden vectors move
-//! to the `rushwind-protocols` repository first, and both ecosystems
+//! to the `rushwind-protocols` repository first, and implementations
 //! regenerate against it — never hand-copy.
 //!
 //! # Lifecycle semantics
@@ -41,8 +39,8 @@
 //!
 //! [`Watcher`]s are the reactive counterpart: each [`Watcher::next`] call
 //! blocks until the watched service's instance set changes, then returns
-//! the **full current snapshot**, not a delta — the shape the Go watcher
-//! delivers, and the shape a consumer's routing table rebuild expects.
+//! the **full current snapshot**, not a delta — the shape a consumer's
+//! routing table rebuild expects.
 //! Dropping a watcher stops it.
 
 #![forbid(unsafe_code)]
@@ -58,7 +56,7 @@ use serde::{Deserialize, Serialize};
 /// Future type used across the registry contract.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The default key namespace, matching the Go registrar's default option.
+/// The default key namespace.
 pub const DEFAULT_NAMESPACE: &str = "/microservices";
 
 /// Errors produced by registry backends.
@@ -83,8 +81,7 @@ impl std::error::Error for RegistryError {}
 /// registry metadata.
 ///
 /// `metadata` is `None` by default, which serializes as JSON `null` — the
-/// byte-parity default, because the Go `App.Instance` helper never sets
-/// metadata either.
+/// byte-parity default of the wire format.
 #[derive(Debug, Clone, Default)]
 pub struct Registration {
     /// The service instance being announced.
@@ -109,17 +106,14 @@ impl Registration {
     }
 }
 
-/// The registration key: `{namespace}/{name}/{id}`.
-///
-/// Byte-compatible with the Go registrar's
-/// `fmt.Sprintf("%s/%s/%s", namespace, service.Name, service.ID)`.
+/// The registration key: `{namespace}/{name}/{id}`, byte-exact per the
+/// wire contract.
 pub fn registry_key(namespace: &str, instance: &Instance) -> String {
     format!("{namespace}/{}/{}", instance.name, instance.id)
 }
 
-/// Serializes a registration to the wire format, byte-compatible with
-/// Go's `json.Marshal(wind.Instance)`: fields in declaration order, and a
-/// `None` metadata as `null`.
+/// Serializes a registration to the wire format: fields in declaration
+/// order, and a `None` metadata as `null`.
 pub fn registry_json(registration: &Registration) -> String {
     #[derive(Serialize)]
     struct Wire<'a> {
@@ -140,10 +134,8 @@ pub fn registry_json(registration: &Registration) -> String {
     serde_json::to_string(&wire).expect("registry wire serialization is infallible")
 }
 
-/// The discovery-side lookup prefix: `{namespace}/{name}`.
-///
-/// Byte-compatible with the Go discovery's
-/// `fmt.Sprintf("%s/%s", namespace, name)`. A prefix range over-matches
+/// The discovery-side lookup prefix: `{namespace}/{name}`, the
+/// registration key minus the `{id}` segment. A prefix range over-matches
 /// sibling service names (`order` also covers `order-service`), which is
 /// why [`Discovery`] readers filter the parsed instances by name.
 pub fn service_prefix(namespace: &str, service_name: &str) -> String {
@@ -151,12 +143,12 @@ pub fn service_prefix(namespace: &str, service_name: &str) -> String {
 }
 
 /// Parses wire-format instance JSON back into an [`Instance`] — the exact
-/// dual of [`registry_json`], accepting the same bytes Go's
-/// `json.Unmarshal(data, &wind.Instance)` accepts.
+/// dual of [`registry_json`], accepting the same bytes the wire format
+/// defines.
 ///
-/// Go's unmarshal leaves missing fields at their zero values and skips
-/// unknown ones; `#[serde(default)]` on the wire struct reproduces both
-/// behaviors. The wire `metadata` field has no Rust-side equivalent and is
+/// Missing fields are left at their zero values and unknown ones skipped;
+/// `#[serde(default)]` on the wire struct produces both behaviors. The wire
+/// `metadata` field has no Rust-side equivalent and is
 /// dropped on parse.
 pub fn registry_parse(data: &str) -> Result<Instance, RegistryError> {
     #[derive(Default, Deserialize)]
@@ -278,9 +270,7 @@ mod tests {
         }
     }
 
-    /// Golden vector: byte-identical to Go's
-    /// `json.Marshal(wind.App.Instance("grpc://127.0.0.1:9000"))` — the
-    /// common shape, where `App.Instance` leaves metadata nil.
+    /// Golden vector: the common shape, where no metadata is attached.
     #[test]
     fn json_matches_go_marshal_with_nil_metadata() {
         let registration = Registration::new(sample_instance());
@@ -290,7 +280,7 @@ mod tests {
         );
     }
 
-    /// Golden vector: metadata set on the Go side would marshal as a JSON
+    /// Golden vector: metadata marshals as a JSON
     /// object at the same position.
     #[test]
     fn json_matches_go_marshal_with_metadata() {
@@ -309,7 +299,7 @@ mod tests {
     }
 
     /// Golden vector: the nil-metadata marshal output parses back into the
-    /// same instance — the exact bytes Go's `json.Unmarshal` accepts.
+    /// same instance — the exact wire bytes.
     #[test]
     fn parse_roundtrips_go_marshal_with_nil_metadata() {
         let instance = registry_parse(
@@ -331,8 +321,8 @@ mod tests {
         assert_eq!(instance, sample_instance());
     }
 
-    /// Go's unmarshal leaves missing fields at their zero values; the
-    /// parser reproduces that instead of rejecting the input. The present
+    /// Missing fields parse to their zero values instead of rejecting the
+    /// input. The present
     /// field survives, the absent ones default.
     #[test]
     fn parse_tolerates_missing_fields_like_go_zero_values() {

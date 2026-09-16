@@ -6,7 +6,7 @@
 //! The Kubernetes registry is whole only in-cluster: registration
 //! patches the owning pod's labels, discovery lists pods the service
 //! account can see. A cluster whose nodes allow the
-//! `wind-service-*` labels on pods sees the Go adapter's exact wire
+//! `wind-service-*` labels on pods sees the adapter's exact wire
 //! contract — identity in labels, endpoints rebuilt from the pod IP
 //! and the protocol-map annotation.
 

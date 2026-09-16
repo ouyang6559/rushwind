@@ -1,5 +1,4 @@
-//! etcd config source for the RushWind configuration contract — the
-//! Go `go-wind-plugins/config/etcd` ported onto `etcd-client`.
+//! etcd config source for the RushWind configuration contract, over `etcd-client`.
 //!
 //! Load is a GET of the key (an absent key is the contract's
 //! `Ok(None)`); watch is etcd's native watch — signal mode forwards
@@ -9,7 +8,7 @@
 //! revision.
 //!
 //! One client serves loads and watches; the connection reconnects
-//! internally, as in the Go pool.
+//! internally.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -35,7 +34,7 @@ impl EtcdSource {
     }
 
     /// Connects with a default key used when a load passes an empty
-    /// one — the Go `WithPath`.
+    /// one.
     pub async fn connect_with<E>(endpoints: &[E], default_key: &str) -> Result<Self, ConfigError>
     where
         E: AsRef<str>,
@@ -89,7 +88,7 @@ impl Source for EtcdSource {
     }
 
     /// Signal-mode watch: one tick per PUT or DELETE event on the
-    /// key — the Go Watcher's channel of change signals.
+    /// key — a channel of change signals.
     fn watch<'a>(
         &'a self,
         key: &'a str,

@@ -1,10 +1,9 @@
-//! YAML engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/yaml` package ported onto `serde_yaml`.
+//! YAML engine for the RushWind encoding contract, over `serde_yaml`.
 //!
-//! A direct delegate, like the Go engine. Payloads are UTF-8 YAML
+//! A direct delegate. Payloads are UTF-8 YAML
 //! text. Note for the record: `serde_yaml` is upstream-deprecated but
-//! remains the most battle-tested YAML serde implementation — the same
-//! maintenance-mode posture as the Go engine's `yaml.v3`.
+//! remains the most battle-tested YAML serde implementation — an
+//! accepted, maintenance-mode choice.
 //!
 //! # Usage
 //!
@@ -28,7 +27,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `yaml.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "yaml";
 
 /// The YAML codec. State-free; construct one or fetch it from the
@@ -43,8 +42,7 @@ impl YamlCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the yaml codec");
     }

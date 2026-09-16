@@ -1,5 +1,4 @@
-//! Environment-variable engine for the Rust configuration contract,
-//! ported from `go-wind-plugins/config/env`.
+//! Environment-variable engine for the Rust configuration contract.
 //!
 //! The carrier is the process environment: a lookup of the key — or the
 //! configured default key when the caller passes an empty one — with an
@@ -63,7 +62,7 @@ impl EnvSource {
 impl Source for EnvSource {
     fn load<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<Vec<u8>>, ConfigError>> {
         Box::pin(async move {
-            // The Go resolveKey: the caller's key wins over the
+            // The caller's key wins over the
             // configured default; the prefix applies when both it and
             // the key are non-empty.
             let mut name = if key.is_empty() {
@@ -100,7 +99,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_empty_resolved_name_is_an_error() {
-        // No default key, empty lookup key: the Go "no key specified".
+        // No default key, empty lookup key: no key specified.
         assert!(matches!(
             source().load("").await.unwrap_err(),
             ConfigError::Failed(_)
@@ -132,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_missing_variable_is_absent_not_an_error() {
-        // The Go (nil, nil): the fallback composition's fall-through.
+        // Absence without error: the fallback composition's fall-through.
         assert_eq!(source().load("RUSHWIND_NEVER_SET_KEY").await.unwrap(), None);
     }
 
@@ -152,7 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_empty_key_under_a_prefix_stays_an_error() {
-        // The Go resolveKey: an empty key never gets the prefix; the
+        // An empty key never gets the prefix; the
         // no-key error stands.
         let env = EnvSource::new(EnvOptions::new().with_prefix("RUSHWIND_TEST_"));
         assert!(matches!(

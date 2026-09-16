@@ -14,7 +14,7 @@ pub enum ConfigError {
     Unresolved(String),
     /// The source offers no watch capability. The default
     /// [`crate::Source`] capability methods return this; it is the
-    /// runtime form of Go's interface assertion, and
+    /// explicit capability marker, and
     /// [`crate::FallbackSource`] skips sub-sources answering with it.
     NotWatchable,
 }

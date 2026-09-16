@@ -1,5 +1,4 @@
-//! Session engine for the Rust authentication contract, ported from
-//! `go-wind-plugins/security/authn/session`.
+//! Session engine for the Rust authentication contract.
 //!
 //! Credentials are opaque session IDs carried in a dedicated header —
 //! `X-Session-Id` by default, renameable via
@@ -12,13 +11,15 @@
 //! [`MemoryStore`] default, the seam a Redis or database-backed
 //! implementation plugs into.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | the ID rides a context value; the documented X-Session-Id header path is unimplemented | the header is the only carrier — extraction reads it via the [`Authenticator::extract_token`] override |
-//! | session IDs come from a hand-rolled LCG | 16 bytes from the OS CSPRNG, hex-encoded to the same 32-character shape — a session ID is a bearer credential; the LCG's predictable sequence was a collision-and-guessing hole |
-//! | an engine with no store configured falls back to a **package-global** memory store, shared across every such engine | each engine gets its own fresh [`MemoryStore`] — no hidden shared state |
+//! - the ID rides the header — extraction reads it via the
+//!   [`Authenticator::extract_token`] override.
+//! - session IDs are 16 bytes from the OS CSPRNG, hex-encoded to a
+//!   32-character shape — a session ID is a bearer credential, so an
+//!   unpredictable source matters.
+//! - each engine gets its own fresh [`MemoryStore`] — no hidden shared
+//!   state.
 //!
 //! Sessions minted here never expire on their own: a store with TTL
 //! semantics is the deployer's choice, and [`SessionStore::delete`] is
@@ -179,8 +180,7 @@ impl Authenticator for SessionAuthenticator {
     }
 
     /// The session engine's credential is its ID in the configured
-    /// header. The Go engine reads a context value here; with no
-    /// context to read, the documented header carrier is the port.
+    /// header.
     fn extract_token(&self, headers: &[(String, String)]) -> Result<String, AuthnError> {
         let id = headers
             .iter()
@@ -194,7 +194,7 @@ impl Authenticator for SessionAuthenticator {
     }
 
     fn authenticate_token(&self, token: &str) -> Result<AuthClaims, AuthnError> {
-        // The Go shape: an empty ID is the missing-credential error; a
+        // An empty ID is the missing-credential error; a
         // store miss is unauthenticated.
         if token.is_empty() {
             return Err(AuthnError::MissingBearerToken);
@@ -203,7 +203,7 @@ impl Authenticator for SessionAuthenticator {
     }
 
     fn create_identity(&self, claims: &AuthClaims) -> Result<String, AuthnError> {
-        // The Go mint: a new session holding the claims, its ID
+        // Minting: a new session holding the claims, its ID
         // returned.
         self.store.set("", claims)
     }
@@ -325,10 +325,8 @@ mod tests {
 
     #[test]
     fn stores_are_per_engine_not_global() {
-        // The Go predecessor shares one package-global default store
-        // across every store-less engine; here each engine gets its
-        // own, so a session minted by one engine is invisible to
-        // another.
+        // Each engine gets its own store, so a session minted by one
+        // engine is invisible to another.
         let a = engine();
         let b = engine();
         let id = a.create_identity(&subject_claims("gina")).unwrap();

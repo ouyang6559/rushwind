@@ -1,21 +1,19 @@
 //! S3 engine for the RushWind oss contract — SigV4 query-signed REST
 //! over reqwest, using `rusty-s3` for the signing. Covers AWS S3,
-//! MinIO, and any S3-compatible endpoint; the Go domain's `s3` and
-//! `minio` clients collapse into this one engine because MinIO **is**
-//! an S3-compatible server.
+//! MinIO, and any S3-compatible endpoint with one engine, because
+//! MinIO **is** an S3-compatible server.
 //!
 //! # The wire behavior
 //!
-//! Publishes are PUT requests, reads GET, removals DELETE — the Go
-//! `PutObject`/`GetObject` surface plus a `delete` addition. Query-
+//! Publishes are PUT requests, reads GET, removals DELETE. Query-
 //! string signing (the presigned-URL form) keeps the request headers
 //! out of the signature; the payload integrity is still enforced by
 //! the required `x-amz-content-sha256` signing input rusty-s3 emits.
 //!
 //! Path-style addressing (`http://host/bucket/key`) suits MinIO and
 //! local endpoints; virtual-host style (`http://bucket.host/key`)
-//! suits AWS. Session tokens (`x-amz-security-token`) are supported
-//! through rusty-s3's credentials.
+//! suits AWS. Session tokens (`x-amz-security-token`) pass through
+//! rusty-s3's credentials.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -46,8 +44,7 @@ const SIGNATURE_VALIDITY: Duration = Duration::from_secs(3600);
 
 impl S3Storage {
     /// Builds an engine from the connection settings, validating the
-    /// bucket — the Go `NewStorage` with the nil-config guard folded
-    /// into a `Result`.
+    /// bucket eagerly and folding the guard into a `Result`.
     pub fn new(config: StorageConfig) -> Result<Self, StorageError> {
         if config.bucket.is_empty() {
             return Err(StorageError::EmptyBucket);
@@ -85,16 +82,16 @@ impl S3Storage {
         })
     }
 
-    /// Constructs from the bootstrap factory's settings wire shape —
-    /// the Go `s3.Config` fields, camelCase keys.
+    /// Constructs from the bootstrap factory's settings wire shape
+    /// (the [`StorageConfig`] fields, camelCase keys).
     pub fn from_settings(settings: serde_json::Value) -> Result<Self, StorageError> {
         let config: StorageConfig = serde_json::from_value(settings)
             .map_err(|e| StorageError::Failed(format!("settings parse: {e}")))?;
         Self::new(config)
     }
 
-    /// Creates the bucket — a setup convenience beyond the Go
-    /// surface, useful against empty MinIO instances.
+    /// Creates the bucket — a setup convenience beyond the core
+    /// contract, useful against empty MinIO instances.
     pub async fn create_bucket(&self) -> Result<(), StorageError> {
         let action = self.inner.bucket.create_bucket(&self.inner.credentials);
         let url = action.sign(SIGNATURE_VALIDITY);

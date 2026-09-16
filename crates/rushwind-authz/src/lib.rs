@@ -1,5 +1,4 @@
-//! Authorization contract for RushWind, extracted from the Go predecessor
-//! `go-wind-plugins/security/authz`.
+//! Authorization contract for RushWind.
 //!
 //! The contract is one trait — [`Engine`] — over a deliberately small
 //! model: [`Subject`] (who), [`Action`] and [`Resource`] (what), and
@@ -20,7 +19,7 @@
 //! - [`Engine::set_policies`] — installs policy state through the
 //!   [`PolicyMap`]/[`RoleMap`] interchange.
 //!
-//! # Engine matrix (ported)
+//! # Engine matrix
 //!
 //! | Crate | Model |
 //! |:---|:---|
@@ -28,18 +27,19 @@
 //! | `rushwind-authz-rbac` | role→permission and user→role maps with role inheritance |
 //! | `rushwind-authz-noop` | allows everything, filters to nothing |
 //!
-//! The Go engines over external policy engines — casbin, cedar, cerbos,
-//! opa, zanzibar (keto, openfga), awsiam — remain unported; each wraps a
+//! Engines over external policy engines — casbin, cedar, cerbos,
+//! opa, zanzibar (keto, openfga), awsiam — are not provided; each wraps a
 //! remote policy service or heavyweight local library that needs its own
 //! contract decisions first.
 //!
-//! # Divergences from the Go predecessor
+//! # Design notes
 //!
-//! | Go | Rust |
-//! |:---|:---|
-//! | `SetPolicies` takes `map[string]interface{}` with engine-local Go types hidden behind runtime type assertions | [`PolicyMap`]/[`RoleMap`] carry [`serde_json::Value`] and each engine deserializes its own typed rules from the JSON shape the Go tags define — the same wire format, without the assertion |
-//! | the authz claims struct rides `context.Context` from middleware to engine | no request context exists; the engine methods take the model values directly, and middleware is the application's |
-//! | engines register through `init()` + a factory map | direct constructors per engine crate |
+//! - [`PolicyMap`]/[`RoleMap`] carry [`serde_json::Value`] and each engine
+//!   deserializes its own typed rules from the JSON shape the model tags
+//!   define — one wire format shared by every engine.
+//! - no request context exists; the engine methods take the model values
+//!   directly, and middleware is the application's.
+//! - direct constructors per engine crate, no registry step.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

@@ -1,16 +1,13 @@
-//! NATS engine for the RushWind broker contract — the Go
-//! `go-wind-plugins/broker/nats` core-NATS mode ported onto
+//! NATS engine for the RushWind broker, core-NATS mode over
 //! `async-nats`.
 //!
 //! # The wire behavior
 //!
-//! Identical to the Go engine's: publishes are `PublishMsg` on the
-//! subject — payload-only, NATS headers are not attached (the Go
-//! engine only adds them through a per-call tracing context). Topics
+//! Publishes are `PublishMsg` on the
+//! subject — payload-only, NATS headers are not attached. Topics
 //! are NATS subjects and follow NATS wildcards (`*` one token, `>`
 //! the rest); subscriptions are plain (no queue group) unless
-//! [`NatsOptions::queue_group`] names one — the Go
-//! `Subscribe`/`QueueSubscribe` split.
+//! [`NatsOptions::queue_group`] names one.
 //!
 //! NATS core is at-most-once fire-and-forget: the event ack is a
 //! no-op, unsubscribing drops the server-side subscription, and a
@@ -20,10 +17,9 @@
 //! library's managed inbox subscription — and the response carries
 //! the payload only, matching the subscribe path.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
-//! - The wire metadata has no NATS carrier beyond headers, which the
-//!   Go engine does not set on the default path either.
+//! - The wire metadata has no NATS carrier beyond headers.
 //!
 //! # Testing
 //!

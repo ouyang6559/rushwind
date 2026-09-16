@@ -1,48 +1,47 @@
-//! The Lua engine for the Rust script contract — the Go predecessor's
-//! gopher-lua engine, rebuilt over [`mlua`] with its vendored Lua 5.4.
+//! The Lua engine for the Rust script contract, built over [`mlua`]
+//! with its vendored Lua 5.4.
 //!
-//! Semantics preserved from the predecessor:
+//! Semantics:
 //!
 //! - The sandbox allow-list: [`set_open_libs`] records library names
 //!   and [`init`] builds the [`mlua::Lua`] instance over exactly that
-//!   set; an empty list is the predecessor's "full standard set"
+//!   set; an empty list is the "full standard set"
 //!   default, rendered as [`StdLib::ALL_SAFE`] because mlua's safe
-//!   constructor refuses the `debug` and `ffi` libraries the
-//!   predecessor's full set included. The gopher-lua names map onto
+//!   constructor refuses the `debug` and `ffi` libraries. The classic
+//!   library names map onto
 //!   [`mlua::StdLib`] bits (`base` has no mlua counterpart — the base
 //!   library is always present — and `channel` does not exist in Lua
 //!   5.4; both are skipped).
 //! - `execute` and `execute_string` run every loaded chunk and
-//!   **discard the results** — the predecessor returned nil for both;
+//!   **discard the results**;
 //!   only `call_function` bridges a value back.
 //! - `register_global`/`get_global` bridge values both ways.
 //! - `register_function` wraps the [`HostFunction`] closure into a Lua
 //!   global callable; `call_function` invokes script-side functions
 //!   with bridged arguments and results.
 //! - The quota: [`QuotaController::set_quota`] arms an instruction
-//!   budget through mlua's `every_nth_instruction` hook, which is the
-//!   same debug-hook mechanism the predecessor armed; a tripped budget
+//!   budget through mlua's `every_nth_instruction` debug-hook
+//!   mechanism; a tripped budget
 //!   aborts the run mid-instruction and answers
 //!   [`ScriptError::QuotaExceeded`]. A wall-clock budget is checked
 //!   post-run: mlua offers no mid-run wall-clock interruption, so the
 //!   run completes and the exceed is reported after the fact.
-//! - Runtime hooks registered before init replay during init; the
-//!   predecessor also stripped "business globals" from recycled
-//!   pooled LStates — this engine holds one Lua instance per engine,
-//!   so there is no recycling to isolate.
+//! - Runtime hooks registered before init replay during init. This
+//!   engine holds one Lua instance per engine,
+//!   so there is no pooled-runtime state to isolate.
 //! - `start_watch` reloads the key on source change ticks, the
 //!   weak-task + abort-handle shape.
 //!
-//! Divergences from the Go predecessor:
+//! Divergences and limits:
 //!
-//! - The predecessor's `RegisterModule` accepted only native
-//!   `Lua.LGFunction` modules and rejected value tables; the contract
-//!   carries data tables only, so the Lua engine **always rejects**
-//!   module registration — the native-module surface has no contract
-//!   representation.
-//! - The LState pool with pre-warmed states collapses into one Lua
-//!   instance per engine behind a mutex; the predecessor's exec mutex
-//!   becomes the same serialization.
+//! - Module registration **always rejects**: value-table modules have
+//!   no native representation on the Lua side, and native-loader
+//!   modules have no contract
+//!   representation — the native-module surface lives on the engine
+//!   crate's own API.
+//! - There is one Lua
+//!   instance per engine behind a mutex; execution is serialized by
+//!   that mutex.
 //! - Host functions run on a minimal inline executor (they must not
 //!   park on runtime resources), and the wall-clock budget is
 //!   post-hoc (see above).
@@ -52,7 +51,7 @@
 //! | Capability | Status |
 //! |:---|:---|
 //! | loader / executor / globals / functions / watch / sandbox / runtime hooks / sync+quota / lifecycle | implemented |
-//! | modules | implemented as an always-rejecting stub (the predecessor rejected value tables too) |
+//! | modules | implemented as an always-rejecting stub |
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -74,7 +73,7 @@ use rushwind_script::{
     ScriptLoader, ScriptValue, ScriptWatcher, SharedEngine, SharedScriptSource, SyncExecutor,
 };
 
-/// The registry name — the Go `scriptEngine.LuaType` constant.
+/// The registry name.
 pub const NAME: &str = "lua";
 
 /// The `lua` engine: [`mlua`] over vendored Lua 5.4.
@@ -124,15 +123,15 @@ impl LuaEngine {
         self.lua.lock().expect("lua engine handle lock").clone()
     }
 
-    /// The gopher-lua library names mapped onto [`StdLib`] bits. The
+    /// The classic library names mapped onto [`StdLib`] bits. The
     /// default — no `set_open_libs` call, or an empty list — is the
-    /// predecessor's full standard set, rendered here as
+    /// full standard safe set, rendered here as
     /// [`StdLib::ALL_SAFE`]: mlua's safe constructor refuses the
     /// `debug` and `ffi` libraries that the full set would include,
     /// so both the default and any explicit `debug` entry open
     /// without them. `base` is always present in mlua and `channel`
     /// does not exist in Lua 5.4; a list naming only those opens
-    /// base alone, exactly as the predecessor's base-only list did.
+    /// base alone.
     fn std_lib_for(names: &[String]) -> StdLib {
         if names.is_empty() {
             return StdLib::ALL_SAFE;
@@ -411,7 +410,7 @@ impl ScriptEngine for LuaEngine {
                 self
             };
             // Replay hooks registered before init, outside the init
-            // lock — the Go replay order. Hooks may call back into
+            // lock. Hooks may call back into
             // the engine.
             let hooks: Vec<RuntimeHook> = lua
                 .hooks
@@ -742,9 +741,9 @@ impl LuaEngine {
 }
 
 impl rushwind_script::ModuleRegistrar for LuaEngine {
-    /// The predecessor accepted only native `Lua.LGFunction` modules
-    /// and rejected value tables; the contract carries value tables
-    /// only, so registration always fails here.
+    /// Module registration always fails: the contract carries value
+    /// tables only, and a value table has no native module
+    /// representation on the Lua side.
     fn register_module(&self, _name: &str, _module: ScriptValue) -> Result<(), ScriptError> {
         let err = ScriptError::Failed("lua engine: module must be a native module".to_string());
         self.set_last_error(err.clone());
@@ -812,8 +811,8 @@ impl ScriptWatcher for LuaEngine {
 }
 
 /// Builds an engine, arming the weak self-reference the watch tasks
-/// need. The Go predecessor registered this under its Lua type
-/// through package `init()`; [`register`] is the explicit Rust form.
+/// need. [`register`] installs it in the factory registry under
+/// [`NAME`].
 pub fn factory() -> Result<SharedEngine, ScriptError> {
     let engine = Arc::new(LuaEngine::new());
     *engine.weak.lock().expect("lua engine weak lock") = Arc::downgrade(&engine);
@@ -1041,7 +1040,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         // The watch task reloaded the chunk into the engine; running
         // the loaded set defines the reloaded function over the old
-        // one, the predecessor's reload-then-execute flow.
+        // one — the reload-then-execute flow.
         engine.execute().await.expect("post-reload execute");
         assert_eq!(
             engine.call_function("f", &[]).await.expect("reloaded"),
@@ -1078,7 +1077,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn probes_offer_the_predecessor_capability_set() {
+    async fn probes_offer_the_full_capability_set() {
         let engine: Arc<dyn ScriptEngine> = factory().expect("engine");
         assert!(engine.clone().as_loader().is_some());
         assert!(engine.clone().as_executor().is_some());

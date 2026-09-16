@@ -1,4 +1,4 @@
-//! The request-logging middleware — the Go `logging`.
+//! The request-logging middleware.
 //!
 //! One `tracing` span per request under the `rushwind.http` target, the
 //! same convention `rushwind-storage-observe` uses for the storage line

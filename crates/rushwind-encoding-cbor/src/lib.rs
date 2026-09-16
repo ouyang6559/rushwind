@@ -1,8 +1,7 @@
-//! CBOR engine for the RushWind encoding contract — the Go
-//! `go-wind-plugins/encoding/cbor` package (RFC 8949) ported onto
+//! CBOR engine for the RushWind encoding contract (RFC 8949), over
 //! `ciborium`.
 //!
-//! One structural divergence from the plain-delegate Go engines: the
+//! Unlike the plain-delegate engines in this workspace: the
 //! `ciborium` crate keeps its serde serializer types private, and the
 //! erased contract needs one. Both directions therefore route through
 //! `serde_json`'s in-memory value model. The caveats are the bridge's:
@@ -32,7 +31,7 @@ use erased_serde::{
 };
 use rushwind_encoding::{Codec, EncodingError};
 
-/// The codec's registry name — the Go `cbor.Name` constant.
+/// The codec's registry name.
 pub const NAME: &str = "cbor";
 
 /// The CBOR codec. State-free; construct one or fetch it from the
@@ -47,8 +46,7 @@ impl CborCodec {
     }
 
     /// Installs the codec in the registry under [`NAME`]. Call once at
-    /// startup — Go registers through package `init()` side effects;
-    /// Rust registers explicitly.
+    /// startup — registration is explicit, not import-time.
     pub fn register() {
         rushwind_encoding::register_codec(Self).expect("register the cbor codec");
     }

@@ -1,5 +1,4 @@
-//! In-process KV cache engine for the RushWind cache contract — the
-//! Go `go-wind-plugins/cache/local` (FreeCache-backed) ported as a
+//! In-process KV cache engine for the RushWind cache contract — a
 //! hand-rolled TTL map.
 //!
 //! # The engine's behavior
@@ -10,12 +9,11 @@
 //! entries are evicted first, then the oldest insertion — an
 //! approximation of FreeCache's ring-buffer eviction.
 //!
-//! [`Cache::set_nx`] is a check-then-insert under one lock — the Go
-//! version is the same check-then-set shape (FreeCache exposes no
-//! native SetNX), with the race window closed by the process-wide
-//! lock rather than FreeCache's segment spin-lock.
+//! [`Cache::set_nx`] is a check-then-insert under one process-wide
+//! lock (FreeCache exposes no native SetNX), closing the race window
+//! without FreeCache's segment spin-lock.
 //!
-//! # Divergences from the Go engine
+//! # Divergences
 //!
 //! - Capacity counts entries, not bytes (FreeCache pre-allocates a
 //!   byte-sized ring buffer).

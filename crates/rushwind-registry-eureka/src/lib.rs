@@ -1,41 +1,38 @@
 //! Eureka adapter for the RushWind registry contract — registration
-//! and discovery, ported from `go-wind-plugins/registry/eureka`
-//! (itself a hand-rolled eureka v2 REST client, so this port speaks
-//! the identical JSON wire shapes through `reqwest`).
+//! and discovery over a hand-rolled eureka v2 REST client speaking
+//! the JSON wire shapes through `reqwest`.
 //!
 //! # Registration
 //!
 //! Each endpoint registers under the upper-cased service name as an
-//! eureka instance whose metadata smuggles the go-wind round-trip
+//! eureka instance whose metadata smuggles the rush-wind round-trip
 //! data (`ID`, `Name`, `Version`, `Endpoints`, `agent`), with the
-//! per-endpoint URLs the Go adapter derives. A heartbeat task PUTs
+//! per-endpoint URLs derived from the registration. A heartbeat task PUTs
 //! the instance every ten seconds and re-registers it after three
-//! consecutive failures — the Go `Heartbeat` goroutine, failure
-//! handling included. Endpoints already listed UP are skipped, as in
-//! the Go API-level register.
+//! consecutive failures — self-healing, failure
+//! handling included. Endpoints already listed UP are skipped.
 //!
 //! # Discovery
 //!
 //! A background loop fetches the full application list every thirty
-//! seconds (the Go `refresh`/`broadcast` pair), keeps the `UP`
+//! seconds, keeps the `UP`
 //! instances grouped by application, and updates each watched
 //! application's cache. [`Discovery::get_service`] serves the cache
 //! when one exists for the (upper-cased) service name and otherwise
-//! falls back to the Go single-application fetch — which never
-//! unwraps the response envelope in the Go original and therefore
-//! always yields an empty list there; this port reproduces that.
-//! [`Discovery::watch`] subscribes an application and, like the Go
-//! `Subscribe`, triggers an immediate refresh; the watcher then wakes
+//! falls back to the single-application fetch — which does not
+//! unwrap the response envelope and therefore
+//! always yields an empty list; this behavior is reproduced here.
+//! [`Discovery::watch`] subscribes an application and
+//! triggers an immediate refresh; the watcher then wakes
 //! on each cache update.
 //!
-//! # Divergences from the Go adapter
+//! # Behavior notes
 //!
-//! - The Go broadcast wakes every subscriber on every refresh; this
-//!   port wakes a watcher only when its own application's cached
-//!   value changed — an unchanged wake is a no-op for consumers.
+//! - The refresh broadcast wakes a watcher only when its own
+//!   application's cached value changed — an unchanged wake is a no-op
+//!   for consumers.
 //! - A dropped [`RegistrationHandle`] aborts that registration's
-//!   heartbeat tasks (the Go client tears down **all** heartbeats on
-//!   the first deregistration); removal then depends on eureka's
+//!   heartbeat tasks; removal then depends on eureka's
 //!   eviction of non-heartbeating instances, which eureka servers
 //!   may disable.
 //! - The wire `metadata` is dropped on the rebuild beyond the
@@ -72,8 +69,8 @@ const DEFAULT_EUREKA_PATH: &str = "eureka/v2";
 
 struct Inner {
     http: reqwest::Client,
-    /// The shuffled server bases; the Go client shuffles once per
-    /// request batch and rotates through them on transport failure.
+    /// The shuffled server bases; shuffled once at construction and
+    /// rotated through on transport failure.
     urls: Mutex<Vec<String>>,
     eureka_path: String,
     /// Watched applications, keyed by upper-cased application name,
@@ -121,7 +118,7 @@ impl EurekaRegistry {
             sets: Mutex::new(HashMap::new()),
             heartbeat_tasks: Mutex::new(HashMap::new()),
         });
-        // The Go API constructor runs one immediate broadcast and
+        // Startup runs one immediate broadcast and
         // then the thirty-second refresh loop.
         let loop_inner = Arc::clone(&inner);
         tokio::spawn(async move {
@@ -168,8 +165,8 @@ impl Registrar for EurekaRegistry {
         registration: Registration,
     ) -> BoxFuture<'a, Result<RegistrationHandle, RegistryError>> {
         Box::pin(async move {
-            // The Go API-level register skips endpoints already
-            // listed UP for the application.
+            // Endpoints already listed UP for the application are
+            // skipped.
             let up_ids: Vec<String> = self
                 .get_service(&registration.instance.name)
                 .await
@@ -220,8 +217,8 @@ impl Registrar for EurekaRegistry {
             for endpoint in &registration.instance.endpoints {
                 let wire = build_wire_endpoint(&registration, endpoint)?;
                 delete_instance(&self.inner, &wire.app_id, &wire.instance_id).await?;
-                // The Go client tears down every heartbeat of the
-                // application, not just this endpoint's.
+                // Every heartbeat of the
+                // application is torn down, not just this endpoint's.
                 let mut tasks = self
                     .inner
                     .heartbeat_tasks
@@ -251,9 +248,9 @@ impl Discovery for EurekaRegistry {
     ) -> BoxFuture<'a, Result<Vec<Instance>, RegistryError>> {
         Box::pin(async move {
             let app_id = service_name.to_uppercase();
-            // The Go GetService serves the cached list whenever one
-            // exists — empty lists included — and only misses through
-            // to the single-application fetch.
+            // The cached list is served whenever one
+            // exists — empty lists included — and only a miss falls
+            // through to the single-application fetch.
             let cached = {
                 let sets = self.inner.sets.lock().expect("service sets poisoned");
                 sets.get(&app_id).map(|set| set.cache.borrow().clone())
@@ -261,8 +258,8 @@ impl Discovery for EurekaRegistry {
             if let Some(cached) = cached {
                 return Ok(cached);
             }
-            // The single-application fetch: the Go original parses
-            // the wrapped response into an unwrapped struct, so the
+            // The single-application fetch: the wrapped response is
+            // parsed into an unwrapped struct, so the
             // envelope key is ignored and the struct stays zeroed —
             // an empty list, faithfully reproduced by this parse.
             let Ok(body) =
@@ -294,7 +291,7 @@ impl Discovery for EurekaRegistry {
                     }
                 }
             };
-            // The Go Subscribe triggers an immediate broadcast in
+            // Subscribing triggers an immediate broadcast in
             // addition to registering the subscriber.
             let inner = Arc::clone(&self.inner);
             tokio::spawn(async move {
@@ -342,8 +339,7 @@ impl Drop for EurekaWatcher {
 
 /// One refresh pass: the full application list, UP instances kept,
 /// grouped by application, each watched application's cache replaced.
-/// A failed or unparsable fetch aborts the pass entirely, as the Go
-/// broadcast does.
+/// A failed or unparsable fetch aborts the pass entirely.
 async fn refresh_once(inner: &Inner) {
     let Some(listing) = fetch_all(inner).await else {
         return;
@@ -364,9 +360,9 @@ async fn refresh_once(inner: &Inner) {
     }
 }
 
-/// The Go `FetchAllUpInstances` plus `cacheAllInstances` grouping:
-/// the root list, UP instances only, keyed by upper-cased application
-/// name, rebuilt into go-wind instances from their smuggled metadata.
+/// The full-instance fetch: the root list, UP instances only, keyed by
+/// upper-cased application
+/// name, rebuilt into rush-wind instances from their smuggled metadata.
 async fn fetch_all(inner: &Inner) -> Option<Vec<(String, Vec<Instance>)>> {
     let body = do_request(inner, reqwest::Method::GET, &["apps"], None)
         .await
@@ -386,9 +382,9 @@ async fn fetch_all(inner: &Inner) -> Option<Vec<(String, Vec<Instance>)>> {
     Some(listing)
 }
 
-/// The go-wind rebuild: identity and endpoints from the smuggled
+/// The rush-wind rebuild: identity and endpoints from the smuggled
 /// metadata — a single-element endpoint list, empty-stringed when the
-/// key is absent, exactly the Go shape.
+/// key is absent.
 fn rebuild(metadata: Option<HashMap<String, String>>) -> Instance {
     let get = |key: &str| {
         metadata
@@ -406,9 +402,8 @@ fn rebuild(metadata: Option<HashMap<String, String>>) -> Instance {
 }
 
 /// The heartbeat loop: a PUT per ten-second tick, and a full
-/// re-registration after three consecutive failures — the Go
-/// `Heartbeat` goroutine, whose failure counter never resets on
-/// success, replicated here.
+/// re-registration after three consecutive failures; the
+/// failure counter never resets on success.
 async fn heartbeat_loop(inner: Arc<Inner>, wire: WireEndpoint) {
     let mut ticker = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
     ticker.tick().await;
@@ -464,9 +459,9 @@ async fn delete_instance(
     .map(|_| ())
 }
 
-/// The Go `Endpoint` derivation: identity fields and URLs pulled from
+/// The endpoint derivation: identity fields and URLs pulled from
 /// the registration, with the metadata smuggle laid over the
-/// registration metadata — the Go `Registry.Endpoints` builder.
+/// registration metadata.
 #[derive(Clone)]
 struct WireEndpoint {
     app_id: String,
@@ -481,8 +476,8 @@ struct WireEndpoint {
 }
 
 impl WireEndpoint {
-    /// The eureka wire instance: the Go `registerEndpoint` marshal
-    /// shape, field names intact.
+    /// The eureka wire instance, standard
+    /// field names intact.
     fn to_wire_instance(&self) -> WireInstance {
         WireInstance {
             instanceId: self.instance_id.clone(),
@@ -511,8 +506,8 @@ impl WireEndpoint {
     }
 }
 
-/// Builds one endpoint's wire shape from the registration — the Go
-/// builder with its `strconv.Atoi`-failure-to-zero port semantics and
+/// Builds one endpoint's wire shape from the registration, with
+/// parse-failure-to-zero port semantics and
 /// its metadata-keyed URL overrides.
 fn build_wire_endpoint(
     registration: &Registration,
@@ -562,7 +557,7 @@ fn build_wire_endpoint(
     })
 }
 
-/// The Go request pipeline: header set, per-request timeout, one
+/// The request pipeline: header set, per-request timeout, one
 /// attempt per configured server with the list shuffled before the
 /// first, transport failures rotating to the next server, HTTP >= 400
 /// surfacing as errors, and everything else returning the body.
@@ -623,8 +618,7 @@ async fn do_request(
     ))
 }
 
-/// A nanos-seeded Fisher-Yates shuffle, the Go client's
-/// `rand.Shuffle` stand-in.
+/// A nanos-seeded Fisher-Yates shuffle.
 fn shuffle(urls: &mut [String]) {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -641,7 +635,7 @@ fn shuffle(urls: &mut [String]) {
 }
 
 /// Splits an endpoint URL into `(host, port)`, with the port
-/// defaulting to 0 — the Go builder's index-slicing shape.
+/// defaulting to 0 when absent or unparseable.
 fn split_endpoint(endpoint: &str) -> Option<(&str, i64)> {
     let separator = endpoint.find("://")?;
     let rest = &endpoint[separator + 3..];
@@ -660,8 +654,8 @@ struct WireRequestInstance {
     instance: WireInstance,
 }
 
-/// The eureka instance wire shape, field names exactly as the Go
-/// client's tags emit them.
+/// The eureka instance wire shape, standard eureka
+/// JSON field names.
 #[derive(Serialize)]
 #[allow(non_snake_case)]
 struct WireInstance {
@@ -708,14 +702,14 @@ struct WireApplicationsRoot {
 }
 
 /// The applications object; `versions__delta` and `apps__hashcode`
-/// are ignored by the parse, as in the Go client.
+/// are ignored by the parse.
 #[derive(Deserialize)]
 struct WireApplications {
     #[serde(rename = "application")]
     application: Vec<WireApplication>,
 }
 
-/// One application in a listing. The Go struct this mirrors is also
+/// One application in a listing; also
 /// the (never-populated) target of the single-application fetch,
 /// whose wrapped responses leave every field at its zero value — the
 /// `#[serde(default)]` here reproduces that on this side of the wire.

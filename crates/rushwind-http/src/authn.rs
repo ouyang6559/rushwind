@@ -1,4 +1,4 @@
-//! The authentication bridge — the Go `authn` middleware for the HTTP
+//! The authentication bridge for the HTTP
 //! family, fulfilled with the [`Authenticator`] contract.
 //!
 //! [`with_authn`] collects the request's header pairs (the exact carrier
@@ -13,7 +13,7 @@
 //!
 //! # Whitelists are assembly
 //!
-//! The Go admin exempts login/captcha/refresh routes from the auth
+//! Login/captcha/refresh-style public routes stay outside the auth
 //! chain. Here the protected subtree gets the layer; the public subtree
 //! does not, and the two merge:
 //!

@@ -645,7 +645,7 @@ where
         let worker = worker.clone();
 
         let heartbeat = async move {
-            // Start from a clean slate: anything a dead predecessor left
+            // Start from a clean slate: anything a dead worker instance left
             // running goes back to the pool before we claim anything.
             if let Err(e) = self.sweep_orphans().await {
                 worker.emit(Event::Error(Box::new(e)));
