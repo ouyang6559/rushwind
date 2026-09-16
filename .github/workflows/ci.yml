@@ -288,6 +288,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The pulsar client's build script compiles its protocol
+      # definitions through prost and needs a real protoc binary —
+      # the runner images ship none, and a fresh, uncached build of
+      # the crate dies without it.
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Start emqx
         run: |
           docker run -d --name emqx -p 1883:1883 emqx:latest

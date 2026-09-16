@@ -117,6 +117,17 @@ impl Source for FileSource {
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| PathBuf::from("."));
             let (notify_tx, notify_rx) = std::sync::mpsc::channel();
+            // On macOS the poll watcher, not FSEvents: FSEvents'
+            // event delivery in headless CI environments is
+            // unreliable — minutes late or never — and a sub-second
+            // poll of the one watched directory is cheap.
+            #[cfg(target_os = "macos")]
+            let mut watcher = notify::PollWatcher::new(
+                notify_tx,
+                notify::Config::default().with_poll_interval(Duration::from_millis(500)),
+            )
+            .map_err(|e| ConfigError::Failed(format!("create file watcher: {e}")))?;
+            #[cfg(not(target_os = "macos"))]
             let mut watcher = notify::recommended_watcher(notify_tx)
                 .map_err(|e| ConfigError::Failed(format!("create file watcher: {e}")))?;
             watcher

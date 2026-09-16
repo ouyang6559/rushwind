@@ -30,8 +30,10 @@ fn no_errors_always_accepts() {
     }
 
     // Healthy traffic: acceptance = requests/(requests+1) — high but
-    // probabilistic, so assert a large majority.
-    for _ in 0..20 {
+    // probabilistic, so assert a large majority. Two hundred
+    // successes first: acceptance concentrates near enough to one
+    // that the sampling cannot dip below the floor.
+    for _ in 0..200 {
         b.mark_success();
     }
     let mut accepted = 0;
