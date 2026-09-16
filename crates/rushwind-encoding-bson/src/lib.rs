@@ -5,7 +5,11 @@
 //! `bson` crate exposes no writer-backed `serde::Serializer` for whole
 //! documents, and the erased contract needs one. Marshal therefore
 //! routes the value through `serde_json`'s in-memory value model
-//! first, then encodes BSON from it. The caveats are the bridge's:
+//! first, then translates that tree into a BSON document element by
+//! element ([`json_value_to_document`]) — by hand, not through serde,
+//! whose number serialization changes shape under the
+//! `arbitrary_precision` feature the workspace's dependency graph
+//! enables on serde_json. The caveats are the bridge's:
 //! BSON's binary and datetime scalars are not reachable through this
 //! surface (they arrive as strings), and `u64` values above `i64::MAX`
 //! fail with an encode error.
@@ -59,6 +63,68 @@ pub fn register() {
     BsonCodec::register();
 }
 
+/// Translates the bridge's JSON value tree into a BSON document — the
+/// top level must be an object. Any untranslatable element anywhere in
+/// the tree fails the whole translation (see [`json_value_to_bson`]).
+fn json_value_to_document(value: &serde_json::Value) -> Option<bson::Document> {
+    let object = match value {
+        serde_json::Value::Object(object) => object,
+        _ => return None,
+    };
+    let mut document = bson::Document::new();
+    for (key, element) in object {
+        let bson_value = json_value_to_bson(element)?;
+        document.insert(key.clone(), bson_value);
+    }
+    Some(document)
+}
+
+/// One JSON value to one BSON value, by shape: `null`, booleans, and
+/// strings map to their BSON scalars; integers within `i32` range
+/// become `Int32` and other `i64`s `Int64`; `u64`s above `i64::MAX`
+/// have no BSON shape and fail the translation; floats become
+/// `Double`; arrays and objects recurse. The translation is
+/// shape-driven by hand on purpose — through serde, the
+/// `arbitrary_precision` feature (enabled on serde_json by the
+/// workspace's dependency graph) would land every integer as a tagged
+/// subdocument instead of a BSON integer.
+fn json_value_to_bson(value: &serde_json::Value) -> Option<bson::Bson> {
+    Some(match value {
+        serde_json::Value::Null => bson::Bson::Null,
+        serde_json::Value::Bool(b) => bson::Bson::Boolean(*b),
+        serde_json::Value::Number(number) => {
+            if let Some(i) = number.as_i64() {
+                match i32::try_from(i) {
+                    Ok(small) => bson::Bson::Int32(small),
+                    Err(_) => bson::Bson::Int64(i),
+                }
+            } else if number.is_u64() {
+                return None;
+            } else if let Some(f) = number.as_f64() {
+                bson::Bson::Double(f)
+            } else {
+                return None;
+            }
+        }
+        serde_json::Value::String(s) => bson::Bson::String(s.clone()),
+        serde_json::Value::Array(array) => {
+            let mut bson_array = Vec::new();
+            for element in array {
+                bson_array.push(json_value_to_bson(element)?);
+            }
+            bson::Bson::Array(bson_array)
+        }
+        serde_json::Value::Object(object) => {
+            let mut document = bson::Document::new();
+            for (key, element) in object {
+                let bson_value = json_value_to_bson(element)?;
+                document.insert(key.clone(), bson_value);
+            }
+            bson::Bson::Document(document)
+        }
+    })
+}
+
 impl Codec for BsonCodec {
     fn name(&self) -> &'static str {
         NAME
@@ -66,8 +132,14 @@ impl Codec for BsonCodec {
 
     fn marshal(&self, value: &dyn ErasedSerialize) -> Result<Vec<u8>, EncodingError> {
         // Through the JSON value model (see the crate docs): render the
-        // value to JSON text, re-read it as an in-memory value, then let
-        // the bson crate encode real BSON.
+        // value to JSON text, re-read it as an in-memory value, then
+        // translate that value tree into a BSON document element by
+        // element. The translation walks the tree by hand rather than
+        // through serde: under the `arbitrary_precision` feature —
+        // which the workspace's dependency graph enables on serde_json
+        // regardless of this crate's own features — serde's Number
+        // serialization changes shape and would land every integer as a
+        // tagged subdocument instead of a BSON integer.
         let mut json = Vec::new();
         value
             .erased_serialize(&mut <dyn ErasedSerializer>::erase(
@@ -76,7 +148,11 @@ impl Codec for BsonCodec {
             .map_err(|e| EncodingError::Failed(format!("bson encode: {e}")))?;
         let value: serde_json::Value = serde_json::from_slice(&json)
             .map_err(|e| EncodingError::Failed(format!("bson encode bridge: {e}")))?;
-        bson::to_vec(&value).map_err(|e| EncodingError::Failed(format!("bson encode: {e}")))
+        let document = json_value_to_document(&value)
+            .ok_or_else(|| EncodingError::Failed("bson encode: not a document".to_string()))?;
+        document
+            .to_vec()
+            .map_err(|e| EncodingError::Failed(format!("bson encode: {e}")))
     }
 
     fn unmarshal<'de>(
@@ -84,12 +160,9 @@ impl Codec for BsonCodec {
         data: &'de [u8],
         decode: &mut dyn FnMut(&mut dyn ErasedDeserializer<'de>) -> Result<(), EncodingError>,
     ) -> Result<(), EncodingError> {
-        // Parse eagerly to a `Bson` value, then deserialize the target
-        // out of it: the bson crate has no public slice-backed
-        // serde::Deserializer to erase directly.
-        let document: bson::Bson = bson::from_slice(data)
+        // The raw slice-backed deserializer, erased directly.
+        let deserializer = bson::RawDeserializer::new(data)
             .map_err(|e| EncodingError::Failed(format!("bson parse: {e}")))?;
-        let deserializer = bson::Deserializer::new(document);
         decode(&mut <dyn ErasedDeserializer>::erase(deserializer))
     }
 }

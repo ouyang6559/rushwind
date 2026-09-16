@@ -17,14 +17,31 @@ type ContractFilterExpr = rushwind_storage::FilterExpr;
 /// Field names follow protojson: lowerCamelCase (`istartsWith`) and the
 /// original snake_case (`istarts_with`) are both accepted; enum values are
 /// their proto member names (`"OPERATOR_UNSPECIFIED"`, `"EQ"`, …).
+///
+/// The parse routes through [`crate::cleanjson`]: the
+/// `google.protobuf.Value` operands deserialize via `deserialize_any`,
+/// which serde_json's `arbitrary_precision` feature — enabled
+/// workspace-wide by the script engines' dependency trees — would
+/// otherwise hand to the visitor as a tagged map instead of a number.
 pub fn filter_expr_from_json(json: &str) -> Result<ContractFilterExpr, StorageError> {
-    let proto: ProtoFilterExpr = serde_json_error(serde_json::from_str(json))?;
+    let value: serde_json::Value = serde_json_error(serde_json::from_str(json))?;
+    let proto: ProtoFilterExpr =
+        serde_json_error(<ProtoFilterExpr as serde::Deserialize>::deserialize(
+            crate::cleanjson::CleanJson::new(&value),
+        ))?;
     filter_expr_from_proto(&proto)
 }
 
 /// Parses a protojson `PagingRequest` document into a contract list query.
+///
+/// Routed through [`crate::cleanjson`] like
+/// [`filter_expr_from_json`], for the same reason.
 pub fn list_query_from_json(json: &str) -> Result<ListQuery, StorageError> {
-    let proto: PagingRequest = serde_json_error(serde_json::from_str(json))?;
+    let value: serde_json::Value = serde_json_error(serde_json::from_str(json))?;
+    let proto: PagingRequest =
+        serde_json_error(<PagingRequest as serde::Deserialize>::deserialize(
+            crate::cleanjson::CleanJson::new(&value),
+        ))?;
     list_query_from_proto(&proto)
 }
 

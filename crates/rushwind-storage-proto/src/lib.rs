@@ -33,4 +33,8 @@ pub mod v1 {
     include!(concat!(env!("OUT_DIR"), "/rushwind.storage.v1.serde.rs"));
 }
 
+/// A feature-immune value-model deserializer for the protojson face —
+/// see the module docs for why [`wire`]'s parses route through it.
+mod cleanjson;
+
 pub mod wire;

@@ -45,7 +45,10 @@ async fn registered_instance_round_trips_then_leaves() {
         .expect("register must succeed");
 
     let mut roundtrip = false;
-    for _ in 0..60 {
+    // Service-center's find API serves a server-side cached view whose
+    // refresh can lag well past a minute on a cold runner, so the poll
+    // budget is generous.
+    for _ in 0..120 {
         let seen = match registry.get_service("order-roundtrip").await {
             Ok(instances) => instances.iter().any(|instance| {
                 instance.id == "order-01"

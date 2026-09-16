@@ -5,9 +5,13 @@
 //! `toml` crate exposes no writer-backed `serde::Serializer` for whole
 //! documents, and the erased contract needs one. Marshal therefore
 //! routes the value through `serde_json`'s in-memory value model
-//! first, then renders TOML from it. For TOML-expressible data the
-//! result is identical to a direct serialization — the caveats are
-//! TOML's own: no binary payloads, integers are i64, and values that
+//! first, then translates that tree into a TOML value by hand
+//! ([`json_to_toml_value`]) — by hand, not through serde, whose
+//! number serialization changes shape under the
+//! `arbitrary_precision` feature the workspace's dependency graph
+//! enables on serde_json. For TOML-expressible data the result is
+//! identical to a direct serialization — the caveats are TOML's own:
+//! no binary payloads, integers are i64, no nulls, and values that
 //! `serde_json`'s value model cannot hold (e.g. `u64` above `i64::MAX`)
 //! fail with an encode error.
 //!
@@ -60,6 +64,48 @@ pub fn register() {
     TomlCodec::register();
 }
 
+/// One JSON value to one TOML value, by shape: booleans, strings,
+/// i64-range integers, and floats map to their TOML scalars;
+/// `u64`s above `i64::MAX`, and nulls (TOML has none), have no TOML
+/// shape and fail the whole translation; arrays and tables recurse.
+/// The translation is shape-driven by hand on purpose — through
+/// serde, the `arbitrary_precision` feature (enabled on serde_json by
+/// the workspace's dependency graph) would land every integer as a
+/// tagged table instead of a TOML integer.
+fn json_to_toml_value(value: &serde_json::Value) -> Option<toml::Value> {
+    Some(match value {
+        serde_json::Value::Null => return None,
+        serde_json::Value::Bool(b) => toml::Value::Boolean(*b),
+        serde_json::Value::Number(number) => {
+            if let Some(i) = number.as_i64() {
+                toml::Value::Integer(i)
+            } else if number.is_u64() {
+                return None;
+            } else if let Some(f) = number.as_f64() {
+                toml::Value::Float(f)
+            } else {
+                return None;
+            }
+        }
+        serde_json::Value::String(s) => toml::Value::String(s.clone()),
+        serde_json::Value::Array(array) => {
+            let mut toml_array = Vec::new();
+            for element in array {
+                toml_array.push(json_to_toml_value(element)?);
+            }
+            toml::Value::Array(toml_array)
+        }
+        serde_json::Value::Object(object) => {
+            let mut table = toml::Table::new();
+            for (key, element) in object {
+                let toml_value = json_to_toml_value(element)?;
+                table.insert(key.clone(), toml_value);
+            }
+            toml::Value::Table(table)
+        }
+    })
+}
+
 impl Codec for TomlCodec {
     fn name(&self) -> &'static str {
         NAME
@@ -67,8 +113,10 @@ impl Codec for TomlCodec {
 
     fn marshal(&self, value: &dyn ErasedSerialize) -> Result<Vec<u8>, EncodingError> {
         // Through the JSON value model (see the crate docs): render the
-        // value to JSON text, re-read it as an in-memory value, then let
-        // the toml crate render real TOML.
+        // value to JSON text, re-read it as an in-memory value, then
+        // translate that tree into a TOML value element by element
+        // ([`json_to_toml_value`]) — the hand-written, feature-immune
+        // path (see the crate docs on `arbitrary_precision`).
         let mut json = Vec::new();
         value
             .erased_serialize(&mut <dyn ErasedSerializer>::erase(
@@ -77,7 +125,9 @@ impl Codec for TomlCodec {
             .map_err(|e| EncodingError::Failed(format!("toml encode: {e}")))?;
         let value: serde_json::Value = serde_json::from_slice(&json)
             .map_err(|e| EncodingError::Failed(format!("toml encode bridge: {e}")))?;
-        toml::to_string(&value)
+        let translated = json_to_toml_value(&value)
+            .ok_or_else(|| EncodingError::Failed("toml encode: not a table".to_string()))?;
+        toml::to_string(&translated)
             .map(String::into_bytes)
             .map_err(|e| EncodingError::Failed(format!("toml encode: {e}")))
     }
