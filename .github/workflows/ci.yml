@@ -45,7 +45,19 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          cargo test --workspace 2>&1 | tee /tmp/workspace-test.log
+          exit ${PIPESTATUS[0]}
+
+      # The failure detail surfaced as annotations: the gates lanes
+      # have no other diagnostic channel, and platform-specific test
+      # failures (a slow ARM runner timing out what the x86 lanes
+      # pass, say) are invisible without it.
+      - name: Report test failure detail
+        if: failure()
+        shell: bash
+        run: sed 's/\x1B\[[0-9;]*m//g' /tmp/workspace-test.log 2>/dev/null | grep -a -A4 "panicked at\|FAILED\|^failures:$" | head -40 | cut -c1-900 | sed 's/^/::error::/'
 
   storage-integration:
     name: storage conformance (live databases)
@@ -328,7 +340,10 @@ jobs:
             -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
             -e KAFKA_AUTO_CREATE_TOPICS_ENABLE=false \
             apache/kafka:latest
-          for i in $(seq 1 60); do docker exec broker-kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092 >/dev/null 2>&1 && break; sleep 2; done
+          # The broker API answering is not enough: the suites join
+          # consumer groups, and the group coordinator comes up after
+          # the broker — probe it with a consumer-group listing.
+          for i in $(seq 1 60); do docker exec broker-kafka /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092 >/dev/null 2>&1 || { sleep 2; continue; }; docker exec broker-kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server 127.0.0.1:9092 --list >/dev/null 2>&1 && break; sleep 2; done
 
       # Apache Pulsar standalone: the binary protocol listener on
       # 6650 is the only surface the engine touches; the admin port

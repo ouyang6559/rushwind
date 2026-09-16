@@ -34,7 +34,12 @@
 //! per-process identity set at register time — and forwards each
 //! matching event as a one-instance snapshot. A broken stream re-dials
 //! with exponential
-//! backoff capped at thirty seconds.
+//! backoff capped at thirty seconds. Alongside the stream a find poll
+//! runs at the find API's cache-refresh cadence and reconciles the
+//! watched service's instance set: appearances the stream missed are
+//! emitted like its addition events, and vanishings — whose removal
+//! events were lost with a broken stream — are re-emitted as their
+//! last-seen one-instance snapshot, the wire removal event's shape.
 //!
 //! # Behavior notes
 //!
@@ -67,6 +72,11 @@ use std::sync::Arc;
 const HEARTBEAT_SECS: u64 = 30;
 /// The watch re-dial backoff cap, in seconds.
 const WATCH_BACKOFF_CAP_SECS: u64 = 30;
+/// The reconciliation poll interval, in seconds — the find API's
+/// server-side cache-refresh cadence: a broken watch stream loses the
+/// removal events of whatever vanished while it was down, so a find
+/// poll re-emits those as their last-seen one-instance snapshot.
+const RECONCILE_POLL_SECS: u64 = 30;
 /// The default tenancy project segment of the registry path.
 const DEFAULT_PROJECT: &str = "default";
 /// The framework identity the registration declares.
@@ -533,8 +543,9 @@ impl Drop for ServicecombWatcher {
 
 /// The watch loop: dial the WebSocket watcher, forward every matching
 /// event, and re-dial with a doubling backoff capped at thirty
-/// seconds after every break. The loop
-/// ends when its watcher is gone.
+/// seconds after every break. Alongside the stream the
+/// reconciliation poll ([`reconcile_instances`]) re-emits what a
+/// broken stream lost. The loop ends when its watcher is gone.
 async fn watch_loop(
     inner: Arc<Inner>,
     self_service_id: String,
@@ -549,6 +560,8 @@ async fn watch_loop(
     .replacen("http://", "ws://", 1)
     .replacen("https://", "wss://", 1);
     let mut backoff_secs = 1u64;
+    // The last-seen instance set the reconciliation poll diffs against.
+    let mut seen: HashMap<String, WireInstance> = HashMap::new();
     loop {
         let dial = tokio_tungstenite::connect_async(&ws_url).await;
         let Ok((stream, _response)) = dial else {
@@ -558,38 +571,110 @@ async fn watch_loop(
         };
         backoff_secs = 1;
         let mut stream = stream;
+        let mut reconcile = tokio::time::interval(Duration::from_secs(RECONCILE_POLL_SECS));
+        reconcile.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         // Read events until the stream breaks; a matching event is
-        // rebuilt and forwarded, ending the loop when the watcher is
-        // gone.
-        while let Some(message) = futures::StreamExt::next(&mut stream).await {
-            let Ok(message) = message else {
-                break;
-            };
-            let tokio_tungstenite::tungstenite::Message::Text(text) = message else {
-                continue;
-            };
-            let Ok(event) = serde_json::from_str::<WireChangedEvent>(&text) else {
-                continue;
-            };
-            if event.key.service_name.as_deref() != Some(service_name.as_str()) {
-                continue;
-            }
-            let Some(wire) = event.instance else {
-                continue;
-            };
-            let instance = Instance {
-                id: wire.instance_id.unwrap_or_default(),
-                name: event.key.service_name.unwrap_or_default(),
-                version: event.key.version.unwrap_or_default(),
-                endpoints: wire.endpoints.unwrap_or_default(),
-            };
-            if signal_tx.send(instance).is_err() {
-                return;
+        // rebuilt and forwarded, and the reconciliation poll re-emits
+        // what a broken stream lost, ending the loop when the watcher
+        // is gone.
+        loop {
+            tokio::select! {
+                message = futures::StreamExt::next(&mut stream) => {
+                    let Some(message) = message else { break };
+                    let Ok(message) = message else { break };
+                    let tokio_tungstenite::tungstenite::Message::Text(text) = message else {
+                        continue;
+                    };
+                    let Ok(event) = serde_json::from_str::<WireChangedEvent>(&text) else {
+                        continue;
+                    };
+                    if event.key.service_name.as_deref() != Some(service_name.as_str()) {
+                        continue;
+                    }
+                    let Some(wire) = event.instance else {
+                        continue;
+                    };
+                    let instance = Instance {
+                        id: wire.instance_id.clone().unwrap_or_default(),
+                        name: event.key.service_name.unwrap_or_default(),
+                        version: event.key.version.unwrap_or_default(),
+                        endpoints: wire.endpoints.clone().unwrap_or_default(),
+                    };
+                    seen.insert(instance.id.clone(), wire);
+                    if signal_tx.send(instance).is_err() {
+                        return;
+                    }
+                }
+                _ = reconcile.tick() => {
+                    reconcile_instances(
+                        &inner,
+                        &self_service_id,
+                        &service_name,
+                        &mut seen,
+                        &signal_tx,
+                    )
+                    .await;
+                }
             }
         }
         tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
         backoff_secs = (backoff_secs * 2).min(WATCH_BACKOFF_CAP_SECS);
     }
+}
+
+/// One reconciliation pass: fetch the watched service's instance list
+/// and diff it against the last-seen set. Appearances the watch
+/// stream missed are emitted like its addition events; vanishings —
+/// their removal events lost with a broken stream — are re-emitted as
+/// their last-seen one-instance snapshot, the wire removal event's
+/// shape. The last-seen set then becomes the fetched list.
+async fn reconcile_instances(
+    inner: &Inner,
+    self_service_id: &str,
+    service_name: &str,
+    seen: &mut HashMap<String, WireInstance>,
+    signal: &tokio::sync::mpsc::UnboundedSender<Instance>,
+) {
+    let Ok(wire_list) = find_instances(inner, self_service_id, &inner.app_id, service_name).await
+    else {
+        return;
+    };
+    let mut current: HashMap<String, WireInstance> = HashMap::new();
+    for wire in wire_list {
+        if let Some(id) = wire.instance_id.clone() {
+            current.insert(id, wire);
+        }
+    }
+    for (id, wire) in &current {
+        if seen.insert(id.clone(), wire.clone()).is_none() {
+            let instance = Instance {
+                id: id.clone(),
+                name: service_name.to_string(),
+                version: wire.service_id.clone().unwrap_or_default(),
+                endpoints: wire.endpoints.clone().unwrap_or_default(),
+            };
+            if signal.send(instance).is_err() {
+                return;
+            }
+        }
+    }
+    let mut vanished = Vec::new();
+    for (id, wire) in seen.iter() {
+        if !current.contains_key(id) {
+            vanished.push(Instance {
+                id: id.clone(),
+                name: service_name.to_string(),
+                version: wire.service_id.clone().unwrap_or_default(),
+                endpoints: wire.endpoints.clone().unwrap_or_default(),
+            });
+        }
+    }
+    for instance in vanished {
+        if signal.send(instance).is_err() {
+            return;
+        }
+    }
+    *seen = current;
 }
 
 /// The instance list for the
@@ -708,7 +793,7 @@ struct WireInstances {
 
 /// The instance wire shape, restricted to the fields the adapter
 /// reads and writes.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 struct WireInstance {
     #[serde(rename = "instanceId", skip_serializing_if = "Option::is_none")]
