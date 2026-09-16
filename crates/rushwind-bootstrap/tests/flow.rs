@@ -61,12 +61,12 @@ fn register_memory_engine(bootstrap: Bootstrap) -> Bootstrap {
 
 fn register_packs(bootstrap: Bootstrap) -> Bootstrap {
     bootstrap
-        .route_pack("health", |_input| {
+        .route_pack("health", |_settings, _input| {
             Ok(RouteSurface::new(
                 Router::new().route("/health", get(|| async { "ok" })),
             ))
         })
-        .route_pack("wired", |input: RouteInput| {
+        .route_pack("wired", |_settings, input: RouteInput| {
             // Proves the storage engine reaches the pack: the route
             // reports whether the repository was injected.
             let repository = input.repository.clone();
@@ -320,7 +320,7 @@ servers:
 "#;
 
 fn plain_pack(bootstrap: Bootstrap) -> Bootstrap {
-    bootstrap.route_pack("plain", |_input| {
+    bootstrap.route_pack("plain", |_settings, _input| {
         Ok(RouteSurface::new(
             Router::new().route("/plain", get(|| async { "ok" })),
         ))
@@ -469,13 +469,13 @@ servers:
   - kind: http
     bind: 127.0.0.1:0
     edge:
-      timeout_secs: 1
+      timeout: 1
     route_packs:
       - name: slow
 "#;
     let bootstrapped = Bootstrap::from_yaml_str(yaml)
         .expect("yaml must parse")
-        .route_pack("slow", |_input| {
+        .route_pack("slow", |_settings, _input| {
             Ok(RouteSurface::new(Router::new().route(
                 "/slow",
                 get(|| async {
@@ -527,7 +527,7 @@ servers:
 "#;
     let bootstrapped = Bootstrap::from_yaml_str(yaml)
         .expect("yaml must parse")
-        .route_pack("panicky", |_input| {
+        .route_pack("panicky", |_settings, _input| {
             Ok(RouteSurface::new(Router::new().route(
                 "/panicky",
                 get(|| async {
@@ -696,12 +696,12 @@ servers:
 
 fn acl_packs(bootstrap: Bootstrap) -> Bootstrap {
     bootstrap
-        .route_pack("open", |_input| {
+        .route_pack("open", |_settings, _input| {
             Ok(RouteSurface::new(
                 Router::new().route("/open", get(|| async { "open" })),
             ))
         })
-        .route_pack("guarded", |_input| {
+        .route_pack("guarded", |_settings, _input| {
             Ok(RouteSurface::new(
                 Router::new().route("/guarded", get(|| async { "guarded" })),
             ))
@@ -819,12 +819,12 @@ servers:
                 )) as Arc<dyn AuthzEngine>)
             })
         })
-        .route_pack("guarded-fixed", |_input| {
+        .route_pack("guarded-fixed", |_settings, _input| {
             Ok(RouteSurface::new(
                 Router::new().route("/guarded-fixed", get(|| async { "fixed" })),
             ))
         })
-        .route_pack("guarded-claim", |_input| {
+        .route_pack("guarded-claim", |_settings, _input| {
             Ok(RouteSurface::new(
                 Router::new().route("/guarded-claim", get(|| async { "claim" })),
             ))

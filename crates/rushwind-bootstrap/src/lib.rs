@@ -45,6 +45,9 @@
 //! toggles the request-id, logging, and recovery middlewares (defaults
 //! on), sets the request budget, and configures CORS — through the
 //! tower-http layer or the gorilla-compatible one when `compat` is set.
+//! Listener addresses take the standard `host:port` form or the
+//! host-any `":port"` form; request budgets take a second count or a
+//! duration string (`"10s"`).
 //! The domain mounts ride per-server `mounts` flags, each behind its
 //! cargo feature: `health` serves `/healthz` + `/readyz` from the
 //! aggregated health section, `metrics` serves `/metrics` from the
@@ -61,8 +64,9 @@
 //! [`with_authorization_for`], and [`with_authorization_claim`] around
 //! that one subtree — the whitelisting model of the HTTP edge, where
 //! public subtrees stay unwrapped and merge with the protected ones.
-//! A pack's own closure may wrap inner subtrees further with anything
-//! the [`RouteInput`] carries.
+//! A pack's own closure receives its `route_packs[].settings` node
+//! verbatim alongside the [`RouteInput`], and may wrap inner subtrees
+//! further with anything the input carries.
 //!
 //! # Session transports
 //!
@@ -489,8 +493,9 @@ pub struct ScriptConfig {
     pub engine: String,
 }
 
-/// One route-pack mount reference: the pack name plus the optional
-/// security wraps applied to the pack's whole router.
+/// One route-pack mount reference: the pack name, the pack's verbatim
+/// settings node, and the optional security wraps applied to the pack's
+/// whole router.
 #[derive(Debug, Deserialize)]
 pub struct RoutePackRef {
     /// The registered route-pack name.
@@ -501,6 +506,9 @@ pub struct RoutePackRef {
     /// The permission point wrapping this pack, if any.
     #[serde(default)]
     pub authz: Option<AuthzRef>,
+    /// Pack-specific settings, passed verbatim to the pack's closure.
+    #[serde(default)]
+    pub settings: serde_json::Value,
 }
 
 /// One permission point: the assembled authz instance plus the fixed
@@ -552,8 +560,11 @@ pub struct ServerConfig {
     pub settings: serde_json::Value,
 }
 
-/// The route-pack closure type.
-type RoutePackFn = Box<dyn Fn(RouteInput) -> Result<RouteSurface, BootstrapError> + Send + Sync>;
+/// The route-pack closure type: the pack's verbatim settings node plus
+/// the shared assembly input.
+type RoutePackFn = Box<
+    dyn Fn(serde_json::Value, RouteInput) -> Result<RouteSurface, BootstrapError> + Send + Sync,
+>;
 
 /// The storage-factory closure type.
 type StorageFactoryFn = Box<
@@ -709,10 +720,15 @@ impl Bootstrap {
         self
     }
 
-    /// Registers a named route pack.
+    /// Registers a named route pack. The closure receives the pack's
+    /// settings node from `route_packs[].settings` verbatim, alongside
+    /// the shared assembly input.
     pub fn route_pack<F>(mut self, name: impl Into<String>, pack: F) -> Self
     where
-        F: Fn(RouteInput) -> Result<RouteSurface, BootstrapError> + Send + Sync + 'static,
+        F: Fn(serde_json::Value, RouteInput) -> Result<RouteSurface, BootstrapError>
+            + Send
+            + Sync
+            + 'static,
     {
         self.route_packs.insert(name.into(), Box::new(pack));
         self
@@ -1135,7 +1151,7 @@ impl Bootstrap {
                         let pack = self.route_packs.get(&pack_ref.name).ok_or_else(|| {
                             BootstrapError::UnknownRoutePack(pack_ref.name.clone())
                         })?;
-                        let mut surface = pack(input.clone())?;
+                        let mut surface = pack(pack_ref.settings.clone(), input.clone())?;
                         surface.router =
                             apply_guards(surface.router, &input, &pack_ref.authn, &pack_ref.authz)?;
                         router = router.merge(surface.router);
@@ -1194,8 +1210,8 @@ impl Bootstrap {
                     if !http.edge.recovery {
                         edge = edge.without_recovery();
                     }
-                    if let Some(secs) = http.edge.timeout_secs {
-                        edge = edge.with_timeout(Duration::from_secs(secs));
+                    if let Some(timeout) = &http.edge.timeout {
+                        edge = edge.with_timeout(timeout.0);
                     }
                     if let Some(cors) = &http.edge.cors {
                         let options = cors_options_from(cors);
@@ -1206,7 +1222,7 @@ impl Bootstrap {
                         };
                     }
                     router = edge.wrap(router);
-                    let mut server = AxumServer::new(http.bind, router)?;
+                    let mut server = AxumServer::new(http.bind.0, router)?;
                     for bus in aux {
                         server = server.with_aux_shutdown(bus);
                     }
@@ -1350,8 +1366,9 @@ fn wire_true() -> bool {
 }
 
 /// The per-server HTTP edge wire: the middleware toggles (defaults on),
-/// the optional request budget, and the optional CORS policy. Absent
-/// fields leave the HTTP edge's defaults in place.
+/// the optional request budget (a second count or a duration string),
+/// and the optional CORS policy. Absent fields leave the HTTP edge's
+/// defaults in place.
 #[derive(Debug, Deserialize)]
 struct EdgeWire {
     #[serde(default = "wire_true")]
@@ -1361,7 +1378,7 @@ struct EdgeWire {
     #[serde(default = "wire_true")]
     recovery: bool,
     #[serde(default)]
-    timeout_secs: Option<u64>,
+    timeout: Option<DurationWire>,
     #[serde(default)]
     cors: Option<CorsWire>,
 }
@@ -1372,7 +1389,7 @@ impl Default for EdgeWire {
             request_id: true,
             logging: true,
             recovery: true,
-            timeout_secs: None,
+            timeout: None,
             cors: None,
         }
     }
@@ -1407,7 +1424,7 @@ struct MountsWire {
 /// Settings of the built-in `http` server kind.
 #[derive(Debug, Deserialize)]
 struct HttpServerConfig {
-    bind: SocketAddr,
+    bind: BindWire,
     #[serde(default)]
     route_packs: Vec<RoutePackRef>,
     #[serde(default)]
@@ -1530,6 +1547,119 @@ fn cors_options_from(wire: &CorsWire) -> CorsOptions {
         options = options.with_max_age(Duration::from_secs(secs));
     }
     options
+}
+
+/// A listener address wire: the standard `host:port` socket-address
+/// form, or the host-any `":port"` form, whose omitted host binds
+/// every interface.
+#[derive(Debug, Clone, Copy)]
+pub struct BindWire(pub SocketAddr);
+
+impl<'de> Deserialize<'de> for BindWire {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let text = String::deserialize(deserializer)?;
+        parse_bind(&text)
+            .ok_or_else(|| <D::Error as serde::de::Error>::custom(format!("bind address: {text}")))
+            .map(BindWire)
+    }
+}
+
+/// Parses a listener address: the standard socket-address form, or the
+/// host-any `":port"` form (the address `0.0.0.0:port`).
+fn parse_bind(text: &str) -> Option<SocketAddr> {
+    let text = text.trim();
+    if let Some(port_text) = text.strip_prefix(':') {
+        let port = port_text.parse::<u16>().ok()?;
+        return Some(SocketAddr::from(([0, 0, 0, 0], port)));
+    }
+    text.parse::<SocketAddr>().ok()
+}
+
+/// A duration wire: a plain second count or a duration string
+/// (`"300s"`, `"1.5h"`). The string grammar is the `ns`, `us`, `µs`,
+/// `ms`, `s`, `m`, `h` unit set of the Go standard library's duration
+/// form.
+#[derive(Debug, Clone, Copy)]
+pub struct DurationWire(pub Duration);
+
+impl<'de> Deserialize<'de> for DurationWire {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer
+            .deserialize_any(DurationWireVisitor)
+            .map(DurationWire)
+    }
+}
+
+/// The duration wire's visitor: second counts or duration strings.
+struct DurationWireVisitor;
+
+impl<'de> serde::de::Visitor<'de> for DurationWireVisitor {
+    type Value = Duration;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "a second count or a duration string")
+    }
+
+    fn visit_u64<E>(self, secs: u64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Duration::try_from_secs_f64(secs as f64)
+            .map_err(|_| E::custom(format!("duration: {secs}s overflows")))
+    }
+
+    fn visit_i64<E>(self, secs: i64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        if secs < 0 {
+            return Err(E::custom(format!("duration: {secs}s is negative")));
+        }
+        self.visit_u64(secs as u64)
+    }
+
+    fn visit_f64<E>(self, secs: f64) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Duration::try_from_secs_f64(secs)
+            .map_err(|_| E::custom(format!("duration: {secs}s is not representable")))
+    }
+
+    fn visit_str<E>(self, text: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        parse_duration_string(text)
+            .and_then(|secs| Duration::try_from_secs_f64(secs).ok())
+            .ok_or_else(|| E::custom(format!("duration string: {text}")))
+    }
+}
+
+/// Parses a duration string (`"300s"`, `"1.5h"`) into seconds.
+fn parse_duration_string(text: &str) -> Option<f64> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let (value, unit) = text.split_at(text.find(|c: char| c.is_alphabetic())?);
+    let value: f64 = value.parse().ok()?;
+    let secs = match unit {
+        "ns" => value / 1e9,
+        "us" | "µs" => value / 1e6,
+        "ms" => value / 1e3,
+        "s" => value,
+        "m" => value * 60.0,
+        "h" => value * 3600.0,
+        _ => return None,
+    };
+    Some(secs)
 }
 
 #[cfg(test)]
@@ -2132,7 +2262,9 @@ servers:
 "#;
         let error = Bootstrap::from_yaml_str(yaml)
             .expect("yaml must parse")
-            .route_pack("p", |_input| Ok(RouteSurface::new(Router::new())))
+            .route_pack("p", |_settings, _input| {
+                Ok(RouteSurface::new(Router::new()))
+            })
             .build()
             .await
             .expect_err("unknown instance must fail");
@@ -2166,11 +2298,61 @@ servers:
             .authz_factory("mockauthz", |_settings| {
                 Box::pin(async move { Ok(Arc::new(MockAuthz) as Arc<dyn AuthzEngine>) })
             })
-            .route_pack("p", |_input| Ok(RouteSurface::new(Router::new())))
+            .route_pack("p", |_settings, _input| {
+                Ok(RouteSurface::new(Router::new()))
+            })
             .build()
             .await
             .expect_err("both project axes must fail");
         assert!(matches!(error, BootstrapError::Config(_)));
+    }
+
+    /// The bind wire parses the standard socket-address form and the
+    /// host-any `":port"` form, and rejects hostnames and malformed
+    /// text.
+    #[test]
+    fn bind_wires_parse_both_forms() {
+        assert!(matches!(
+            parse_bind(":7788"),
+            Some(addr) if addr.port() == 7788 && addr.ip().is_unspecified()
+        ));
+        assert!(matches!(
+            parse_bind("127.0.0.1:8080"),
+            Some(addr) if addr.port() == 8080 && addr.ip().is_loopback()
+        ));
+        assert_eq!(parse_bind("localhost:8080"), None);
+        assert_eq!(parse_bind("nope"), None);
+    }
+
+    /// Duration strings parse into seconds across the unit set.
+    #[test]
+    fn duration_strings_parse_to_seconds() {
+        assert_eq!(parse_duration_string("300s"), Some(300.0));
+        assert_eq!(parse_duration_string("90m"), Some(5400.0));
+        assert_eq!(parse_duration_string("1.5h"), Some(5400.0));
+        assert_eq!(parse_duration_string("0.4s"), Some(0.4));
+    }
+
+    /// Malformed duration strings reject.
+    #[test]
+    fn malformed_durations_reject() {
+        assert_eq!(parse_duration_string(""), None);
+        assert_eq!(parse_duration_string("abc"), None);
+        assert_eq!(parse_duration_string("12q"), None);
+    }
+
+    /// The edge wire takes its request budget as a duration string or
+    /// a plain second count; an absent field leaves no budget.
+    #[test]
+    fn edge_wires_accept_both_budget_forms() {
+        let string_form: EdgeWire =
+            serde_yaml::from_str("timeout: 10s").expect("duration-string form must parse");
+        assert!(matches!(string_form.timeout, Some(d) if d.0.as_secs() == 10));
+        let count_form: EdgeWire =
+            serde_yaml::from_str("timeout: 10").expect("second-count form must parse");
+        assert!(matches!(count_form.timeout, Some(d) if d.0.as_secs() == 10));
+        let absent: EdgeWire = serde_yaml::from_str("{}").expect("empty edge must parse");
+        assert!(absent.timeout.is_none());
     }
 
     /// Registered cron jobs mount by name on the `cron` server kind,
