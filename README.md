@@ -6,6 +6,10 @@
 
 [English](./README_en.md) | **中文** | [日本語](./README_ja.md)
 
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.81+-DEA584?logo=rust)](https://www.rust-lang.org/)
+[![CI](https://github.com/tx7do/rushwind/actions/workflows/ci.yml/badge.svg)](https://github.com/tx7do/rushwind/actions/workflows/ci.yml)
+
 </div>
 
 ---
