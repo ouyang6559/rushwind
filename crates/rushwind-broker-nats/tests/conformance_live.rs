@@ -112,6 +112,10 @@ async fn request_round_trips_through_native_responder() {
         .subscribe(String::from("probe.nats.request"))
         .await
         .expect("responder subscribes");
+    // The responder's SUB also lacks a server ack; flush it through
+    // so the request below cannot reach the server ahead of the
+    // registration and come back "no responders".
+    responder.flush().await.expect("responder flushes");
     let echo = responder.clone();
     tokio::spawn(async move {
         // The native responder loop: publish each request's payload

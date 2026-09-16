@@ -134,6 +134,17 @@ impl Broker for NatsBroker {
                 .await
                 .map_err(|e| BrokerError::Failed(format!("nats subscribe {topic}: {e}")))?;
 
+            // The SUB rides the wire without a server ack; the flush
+            // rides a PING/PONG on the same connection, so once this
+            // returns the server has processed the registration.
+            // Without it a racing publish is silently dropped — core
+            // NATS matches subscriptions only at publish time.
+            self.inner
+                .client
+                .flush()
+                .await
+                .map_err(|e| BrokerError::Failed(format!("nats subscribe {topic} flush: {e}")))?;
+
             // The reader owns the server-side subscription; cancelling
             // it drops the subscription, which unsubscribes.
             let done = CancellationToken::new();
