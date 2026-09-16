@@ -179,6 +179,22 @@ impl Server for CronServer {
 
     fn start(&self, stop: StopSignal) -> ServerFuture<'_> {
         Box::pin(async move {
+            // Anchor the tick phase on the wall clock: a plain interval
+            // would lock onto the start instant, whose second-of-minute
+            // phase decides whether a second-0 tick ever arrives. The
+            // first deadline is therefore the next half-minute boundary,
+            // and the 30 s cadence keeps every later tick on one.
+            let unix = std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .unwrap_or_default();
+            tokio::select! {
+                _ = stop.wait() => {
+                    return Err(ServerError::Cancelled);
+                }
+                _ = tokio::time::sleep(duration_to_next_half_minute(
+                    std::time::Duration::from_secs(unix.as_secs()),
+                )) => {}
+            }
             let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
@@ -214,6 +230,13 @@ impl Server for CronServer {
     }
 }
 
+/// Time left until the next wall-clock half-minute boundary (`:00` or
+/// `:30`); a full period when already on one, so the caller never
+/// spins on a zero wait.
+fn duration_to_next_half_minute(elapsed: std::time::Duration) -> std::time::Duration {
+    std::time::Duration::from_secs(30 - elapsed.as_secs() % 30)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +261,19 @@ mod tests {
         let spec = CronSpec::parse("0 0 1,15 * *").unwrap();
         assert!(spec.matches(t(0, 0, 15)));
         assert!(!spec.matches(t(0, 0, 14)));
+    }
+
+    /// The half-minute wait lands every start phase on a `:00`/`:30`
+    /// boundary — the property that keeps a second-0 tick reachable no
+    /// matter when the transport starts.
+    #[test]
+    fn half_minute_wait_lands_every_phase_on_a_boundary() {
+        for second in 0u64..60 {
+            let wait = duration_to_next_half_minute(std::time::Duration::from_secs(second));
+            let landed = (second + wait.as_secs()) % 30;
+            assert_eq!(landed, 0, "phase {second}s must reach a boundary");
+            assert!(wait.as_secs() >= 1 && wait.as_secs() <= 30);
+        }
     }
 
     #[test]
