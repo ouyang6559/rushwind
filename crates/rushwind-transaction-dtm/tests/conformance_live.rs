@@ -3,11 +3,12 @@
 //! requires DTM itself to drive the participant endpoints. Off by
 //! default; CI runs it against a dtm service container.
 //!
-//! The participant servers bind wildcard and are advertised to dtm
-//! under `DTM_CALLBACK_HOST` (default `127.0.0.1`): dtmsvr dials the
-//! participant URLs itself, so when it runs in a container — as CI's
-//! does — the host part must be one that resolves to the test
-//! process's machine from inside that container.
+//! The participant servers bind wildcard and answer on two base
+//! URLs: the loopback one, for the URLs the test process itself
+//! dials (the TCC try phase), and one over `DTM_CALLBACK_HOST`
+//! (default `127.0.0.1`) for the URLs dtmsvr dials itself — when
+//! it runs in a container, as CI's does, that host must be one that
+//! resolves to the test process's machine from inside the container.
 #![cfg(feature = "live")]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,12 +28,22 @@ fn callback_host() -> String {
     std::env::var("DTM_CALLBACK_HOST").unwrap_or_else(|_| "127.0.0.1".into())
 }
 
-/// A wildcard-bound listener plus the base URL dtmsvr dials back on:
-/// the configured callback host with the listener's ephemeral port.
-async fn participant_base() -> (tokio::net::TcpListener, String) {
+/// A wildcard-bound listener plus the two base URLs its endpoints are
+/// reachable under: one over the loopback, for URLs the test process
+/// itself dials (the TCC try phase), and one over the configured
+/// callback host, for URLs dtmsvr dials (everything else). When
+/// dtmsvr runs in a container those hosts differ — its
+/// `--add-host` alias exists only inside the container, and its
+/// loopback is not the test process's — and when it runs bare they
+/// coincide.
+async fn participant_base() -> (tokio::net::TcpListener, String, String) {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    (listener, format!("http://{}:{port}", callback_host()))
+    (
+        listener,
+        format!("http://127.0.0.1:{port}"),
+        format!("http://{}:{port}", callback_host()),
+    )
 }
 
 fn unique_gid(prefix: &str) -> String {
@@ -52,7 +63,7 @@ fn failure_body() -> (StatusCode, &'static str) {
 }
 
 /// Serves the TCC participant endpoints, counting calls per path.
-async fn spawn_tcc_busi() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+async fn spawn_tcc_busi() -> (String, String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
     let try_calls = Arc::new(AtomicUsize::new(0));
     let confirm_calls = Arc::new(AtomicUsize::new(0));
     let try_for_route = try_calls.clone();
@@ -73,11 +84,11 @@ async fn spawn_tcc_busi() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
             }),
         )
         .route("/cancel", axum::routing::post(|| async move { ok_body() }));
-    let (listener, base) = participant_base().await;
+    let (listener, loopback_base, remote_base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (base, try_calls, confirm_calls)
+    (loopback_base, remote_base, try_calls, confirm_calls)
 }
 
 /// Serves the msg participant endpoints, counting calls per path.
@@ -91,11 +102,11 @@ async fn spawn_msg_busi() -> (String, Arc<AtomicUsize>) {
             ok_body()
         }),
     );
-    let (listener, base) = participant_base().await;
+    let (listener, _, remote_base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (base, action_calls)
+    (remote_base, action_calls)
 }
 
 /// Serves the query-prepared endpoint for msg.
@@ -104,25 +115,29 @@ async fn spawn_query_prepared() -> String {
         "/query-prepared",
         axum::routing::get(|| async move { ok_body() }),
     );
-    let (listener, base) = participant_base().await;
+    let (listener, _, remote_base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    format!("{base}/query-prepared")
+    format!("{remote_base}/query-prepared")
 }
 
 #[tokio::test]
 async fn tcc_branches_confirm_against_a_real_dtmsvr() {
-    let (busi, try_calls, confirm_calls) = spawn_tcc_busi().await;
+    let (loopback_base, remote_base, try_calls, confirm_calls) = spawn_tcc_busi().await;
     let client = DtmClient::with_server(server());
 
     client
         .tcc_global_transaction(unique_gid("rushwind-live-tcc"), |mut tcc| async move {
+            // The try phase runs client-side in the test process, so
+            // its URL uses the loopback base; the confirm and cancel
+            // phases are driven by dtmsvr itself, so theirs use the
+            // callback base. One wildcard-bound server serves both.
             tcc.call_branch(
                 &serde_json::json!({ "item": 1 }),
-                &format!("{busi}/try"),
-                &format!("{busi}/confirm"),
-                &format!("{busi}/cancel"),
+                &format!("{loopback_base}/try"),
+                &format!("{remote_base}/confirm"),
+                &format!("{remote_base}/cancel"),
             )
             .await
         })
@@ -179,11 +194,11 @@ async fn spawn_busi() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
                 ok_body()
             }),
         );
-    let (listener, base) = participant_base().await;
+    let (listener, _, remote_base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (base, action_calls, compensate_calls)
+    (remote_base, action_calls, compensate_calls)
 }
 
 async fn wait_for(counter: &Arc<AtomicUsize>, what: &str) {

@@ -113,7 +113,7 @@ impl CronSpec {
         self.fields[0].contains(&(t.minute()))
             && self.fields[1].contains(&(t.hour()))
             && self.fields[2].contains(&(t.day()))
-            && self.fields[3].contains(&(t.month() as u32))
+            && self.fields[3].contains(&(t.month()))
             && self.fields[4].contains(&dow)
     }
 }
@@ -219,7 +219,7 @@ mod tests {
     use super::*;
 
     fn t(minute: u32, hour: u32, day: u32) -> chrono::NaiveDateTime {
-        chrono::NaiveDate::from_ymd_opt(2026, 9, day.max(1).min(28))
+        chrono::NaiveDate::from_ymd_opt(2026, 9, day.clamp(1, 28))
             .unwrap()
             .and_hms_opt(hour, minute, 0)
             .unwrap()

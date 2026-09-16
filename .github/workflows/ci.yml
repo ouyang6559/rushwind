@@ -292,7 +292,17 @@ jobs:
 
       - name: Start rabbitmq
         run: |
-          docker run -d --name broker-rabbitmq -p 5672:5672 -p 61613:61613 rabbitmq:latest
+          # Pull with retries: anonymous Docker Hub pulls from the
+          # runner VMs get throttled intermittently.
+          for i in $(seq 1 5); do
+            if err=$(docker pull rabbitmq:latest 2>&1); then break; fi
+            echo "::error::rabbitmq pull attempt $i failed: $(echo "$err" | tr '\n' ' ')"
+            sleep 20
+          done
+          if ! err=$(docker run -d --name broker-rabbitmq -p 5672:5672 -p 61613:61613 rabbitmq:latest 2>&1); then
+            echo "::error::rabbitmq container failed to start: $(echo "$err" | tr '\n' ' ')"
+            exit 1
+          fi
           # The plugin CLI silently falls back to offline mode against a
           # half-booted node, and the broker takes minutes to finish
           # booting on a slow runner — wait for the node first, enable
@@ -403,8 +413,13 @@ jobs:
       # onto an occupied port makes docker run fail with exit 125.
       - name: Start minio
         run: |
+          for i in $(seq 1 5); do
+            if err=$(docker pull minio/minio:latest 2>&1); then break; fi
+            echo "::error::minio pull attempt $i failed: $(echo "$err" | tr '\n' ' ')"
+            sleep 20
+          done
           if ! err=$(docker run -d --name minio -p 9140:9000 -e MINIO_ROOT_USER=rushwind -e MINIO_ROOT_PASSWORD=rushwind-secret minio/minio:latest server /data 2>&1); then
-            echo "::error::minio container failed to start: ${err}"
+            echo "::error::minio container failed to start: $(echo "$err" | tr '\n' ' ')"
             exit 1
           fi
           for i in $(seq 1 60); do curl -fsS http://localhost:9140/minio/health/live >/dev/null 2>&1 && break; sleep 2; done
@@ -454,7 +469,7 @@ jobs:
 
       - name: Report suite failure detail
         if: failure()
-        run: grep -h "panicked at\|must succeed\|dtm never called" /tmp/dtm-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
+          run: grep -h "panicked at\|must succeed\|dtm never called\|error sending request\|on an .Err. value" /tmp/dtm-suite.log | grep -v "^     Running\|Compiling\|warning" | head -20 | cut -c1-900 | sed 's/^/::error::/'
 
   apalis-pg-integration:
     name: task queue conformance (live postgres)
