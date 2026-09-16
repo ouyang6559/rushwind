@@ -389,17 +389,40 @@ impl Broker for KafkaBroker {
             }
             let state = self.partition_state(topic).await?;
             // A fresh consumer group per subscription, with a
-            // random group id.
-            let group = ConsumerGroupBuilder::<TcpConnection>::new(
-                self.inner.addrs.clone(),
-                random_group_id(),
-                HashMap::from([(topic.to_string(), state.partitions.clone())]),
-            )
-            .await
-            .map_err(kafka_err)?
-            .build()
-            .await
-            .map_err(kafka_err)?;
+            // random group id. The first join of a fresh group
+            // races the broker's lazy coordinator election — every
+            // attempt until the election resolves answers
+            // GroupCoordinatorNotAvailable — so the builder retries
+            // with backoff, as every long-lived kafka client does.
+            let group_id = random_group_id();
+            let mut group = None;
+            let mut join_backoff_secs = 1u64;
+            for _ in 0..6 {
+                let attempt = async {
+                    let builder = ConsumerGroupBuilder::<TcpConnection>::new(
+                        self.inner.addrs.clone(),
+                        group_id.clone(),
+                        HashMap::from([(topic.to_string(), state.partitions.clone())]),
+                    )
+                    .await
+                    .map_err(kafka_err)?;
+                    builder.build().await.map_err(kafka_err)
+                }
+                .await;
+                if let Ok(built) = attempt {
+                    group = Some(built);
+                    break;
+                }
+                if join_backoff_secs < 30 {
+                    tokio::time::sleep(Duration::from_secs(join_backoff_secs)).await;
+                    join_backoff_secs *= 2;
+                }
+            }
+            let Some(group) = group else {
+                return Err(BrokerError::Failed(
+                    "kafka: the group join kept failing".to_string(),
+                ));
+            };
             let done = CancellationToken::new();
             let task_done = done.clone();
             let handler = Arc::clone(&handler);

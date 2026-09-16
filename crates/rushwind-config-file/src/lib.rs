@@ -258,7 +258,10 @@ mod tests {
     }
 
     async fn next_with_timeout(stream: &mut dyn ValueStream) -> Option<Vec<u8>> {
-        tokio::time::timeout(Duration::from_secs(5), stream.next())
+        // The budget is sized for FSEvents: macOS file-watch deliveries
+        // routinely lag several seconds behind the write, so the tight
+        // budgets the instant backends allow would flake the ARM lanes.
+        tokio::time::timeout(Duration::from_secs(30), stream.next())
             .await
             .expect("stream delivers within the test budget")
     }
