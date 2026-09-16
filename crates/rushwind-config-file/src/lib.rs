@@ -119,12 +119,17 @@ impl Source for FileSource {
             let (notify_tx, notify_rx) = std::sync::mpsc::channel();
             // On macOS the poll watcher, not FSEvents: FSEvents'
             // event delivery in headless CI environments is
-            // unreliable — minutes late or never — and a sub-second
-            // poll of the one watched directory is cheap.
+            // unreliable — minutes late or never. The poll watcher
+            // compares content, not just mtimes: its mtime
+            // comparison truncates to whole seconds, so without
+            // content comparison a write landing in the same second
+            // as the previous scan is invisible.
             #[cfg(target_os = "macos")]
             let mut watcher = notify::PollWatcher::new(
                 notify_tx,
-                notify::Config::default().with_poll_interval(Duration::from_millis(500)),
+                notify::Config::default()
+                    .with_poll_interval(Duration::from_millis(500))
+                    .with_compare_contents(true),
             )
             .map_err(|e| ConfigError::Failed(format!("create file watcher: {e}")))?;
             #[cfg(not(target_os = "macos"))]
