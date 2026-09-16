@@ -100,10 +100,9 @@ fn json_value_to_bson(value: &serde_json::Value) -> Option<bson::Bson> {
                 }
             } else if number.is_u64() {
                 return None;
-            } else if let Some(f) = number.as_f64() {
-                bson::Bson::Double(f)
             } else {
-                return None;
+                let f = number.as_f64()?;
+                bson::Bson::Double(f)
             }
         }
         serde_json::Value::String(s) => bson::Bson::String(s.clone()),

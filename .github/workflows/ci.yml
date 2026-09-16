@@ -291,6 +291,11 @@ jobs:
           docker run -d --name broker-nats -p 4222:4222 nats:latest
           sleep 5
 
+      # The rabbitmq container starts here but its readiness waits run
+      # last (see below): the broker takes minutes to finish booting on
+      # a slow runner, and waiting here would serialize the whole job
+      # behind one container — started now, it boots in the background
+      # while the other lanes start up.
       - name: Start rabbitmq
         run: |
           # Pull with retries: anonymous Docker Hub pulls from the
@@ -304,24 +309,6 @@ jobs:
             echo "::error::rabbitmq container failed to start: $(echo "$err" | tr '\n' ' ')"
             exit 1
           fi
-          # The plugin CLI silently falls back to offline mode against a
-          # half-booted node, and the broker can take many minutes to
-          # finish booting on a slow runner — wait for the node, bail
-          # loudly if it never arrives, and only then enable the plugin
-          # and wait for both listeners to accept.
-          for i in $(seq 1 240); do docker exec broker-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 && break; sleep 2; done
-          if ! docker exec broker-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
-            echo "::error::rabbitmq node never became ready within the wait window"
-            exit 1
-          fi
-          for i in $(seq 1 10); do
-            if err=$(docker exec broker-rabbitmq rabbitmq-plugins enable rabbitmq_stomp 2>&1); then break; fi
-            echo "::error::rabbitmq plugin enable attempt $i failed: $(echo "$err" | tr '\n' ' ')"
-            sleep 10
-          done
-          for port in 5672 61613; do
-            for i in $(seq 1 120); do timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$port" 2>/dev/null && break; sleep 2; done
-          done
 
       # Apache Kafka in KRaft single-node mode: the engine's live
       # suite creates its probe topics explicitly, so auto-create
@@ -350,6 +337,29 @@ jobs:
         run: |
           docker run -d --name broker-pulsar -p 6650:6650 apachepulsar/pulsar-standalone:latest
           for i in $(seq 1 90); do timeout 2 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/6650' 2>/dev/null && break; sleep 2; done
+
+      # The rabbitmq readiness waits deferred from its start step: the
+      # broker has been booting in the background through the other
+      # lanes' startups. The plugin CLI silently falls back to offline
+      # mode against a half-booted node, so the node must be up before
+      # the enable, and both listeners must accept before the suites
+      # run; both waits bail with an annotation if the broker never
+      # arrives.
+      - name: Wait for rabbitmq readiness
+        run: |
+          for i in $(seq 1 240); do docker exec broker-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 && break; sleep 2; done
+          if ! docker exec broker-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+            echo "::error::rabbitmq node never became ready within the wait window"
+            exit 1
+          fi
+          for i in $(seq 1 10); do
+            if err=$(docker exec broker-rabbitmq rabbitmq-plugins enable rabbitmq_stomp 2>&1); then break; fi
+            echo "::error::rabbitmq plugin enable attempt $i failed: $(echo "$err" | tr '\n' ' ')"
+            sleep 10
+          done
+          for port in 5672 61613; do
+            for i in $(seq 1 120); do timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$port" 2>/dev/null && break; sleep 2; done
+          done
 
       - name: Mqtt suite
         run: |

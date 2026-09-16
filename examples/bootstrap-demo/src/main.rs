@@ -58,12 +58,12 @@ fn assemble() -> Result<Bootstrap, BootstrapError> {
         })
     });
     Ok(bootstrap
-        .route_pack("health", |_input| {
+        .route_pack("health", |_, _| {
             Ok(RouteSurface::new(
                 Router::new().route("/health", get(|| async { "ok" })),
             ))
         })
-        .route_pack("wired", |input: RouteInput| {
+        .route_pack("wired", |_settings, input: RouteInput| {
             // Proves the configured storage reaches route packs.
             let repository = input.repository.clone();
             Ok(RouteSurface::new(Router::new().route(

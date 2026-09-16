@@ -113,9 +113,11 @@ async fn watcher_delivers_addition_then_removal() {
         .expect("register must succeed");
 
     // Per-instance events: retry deliveries until the watched-for
-    // instance's addition arrives.
+    // instance's addition arrives. The server's propagation to its
+    // watch streams can lag well past a minute on a cold runner, so
+    // both retry budgets here are generous.
     let mut delivered = false;
-    for _ in 0..60 {
+    for _ in 0..120 {
         let snapshot = match tokio::time::timeout(Duration::from_secs(5), watcher.next()).await {
             Ok(Ok(instances)) => instances,
             _ => continue,
@@ -137,7 +139,7 @@ async fn watcher_delivers_addition_then_removal() {
         .await
         .expect("deregister must succeed");
     let mut removed = false;
-    for _ in 0..60 {
+    for _ in 0..120 {
         let snapshot = match tokio::time::timeout(Duration::from_secs(5), watcher.next()).await {
             Ok(Ok(instances)) => instances,
             _ => continue,

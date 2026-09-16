@@ -81,10 +81,9 @@ fn json_to_toml_value(value: &serde_json::Value) -> Option<toml::Value> {
                 toml::Value::Integer(i)
             } else if number.is_u64() {
                 return None;
-            } else if let Some(f) = number.as_f64() {
-                toml::Value::Float(f)
             } else {
-                return None;
+                let f = number.as_f64()?;
+                toml::Value::Float(f)
             }
         }
         serde_json::Value::String(s) => toml::Value::String(s.clone()),
