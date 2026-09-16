@@ -119,8 +119,7 @@ impl CronSpec {
 }
 
 /// The async handler fired when a job's spec matches.
-pub type CronHandler =
-    Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+pub type CronHandler = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 /// A registered periodic job: a stable name, a cron spec, and a handler.
 pub struct CronJob {
@@ -139,7 +138,11 @@ impl CronJob {
         spec: CronSpec,
         handler: impl Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync + 'static,
     ) -> Self {
-        Self { name: name.into(), spec, handler: Arc::new(handler) }
+        Self {
+            name: name.into(),
+            spec,
+            handler: Arc::new(handler),
+        }
     }
 }
 
@@ -156,7 +159,10 @@ pub struct CronServer {
 impl CronServer {
     /// A cron server with no jobs — register with [`CronServer::with_job`].
     pub fn new(endpoint: impl Into<String>) -> Self {
-        Self { endpoint: endpoint.into(), jobs: Vec::new() }
+        Self {
+            endpoint: endpoint.into(),
+            jobs: Vec::new(),
+        }
     }
 
     /// Registers a job (builder style).
@@ -173,8 +179,7 @@ impl Server for CronServer {
 
     fn start(&self, stop: StopSignal) -> ServerFuture<'_> {
         Box::pin(async move {
-            let mut ticker =
-                tokio::time::interval(std::time::Duration::from_secs(30));
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(30));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
             loop {

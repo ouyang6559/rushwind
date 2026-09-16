@@ -110,18 +110,32 @@ async fn watcher_delivers_the_registered_instance() {
         .await
         .expect("register must succeed");
 
-    let snapshot = tokio::time::timeout(Duration::from_secs(45), watcher.next())
-        .await
-        .expect("watch delivery arrives")
-        .expect("watch delivery must succeed");
-    let delivered = snapshot
-        .iter()
-        .find(|instance| instance.id == "order-watch-01")
-        .filter(|instance| {
-            instance.endpoints == registration.instance.endpoints && instance.version == "v1.0.0"
-        });
+    // The health view moves in two steps — the registration lands
+    // with its TTL check still critical (a view change whose
+    // passing-only snapshot is empty), and only the first heartbeat
+    // turns the check passing and the instance appears. Parallel
+    // tests mutate the same shared service name, so intermediate
+    // snapshots may carry their instances only. The watcher sees view
+    // snapshots, never per-instance events, so poll for the one that
+    // carries this registration.
+    let deadline = std::time::Instant::now() + Duration::from_secs(45);
+    let mut delivered = false;
+    while std::time::Instant::now() < deadline {
+        let snapshot = match tokio::time::timeout(Duration::from_secs(5), watcher.next()).await {
+            Ok(Ok(instances)) => instances,
+            _ => continue,
+        };
+        if snapshot.iter().any(|instance| {
+            instance.id == "order-watch-01"
+                && instance.endpoints == registration.instance.endpoints
+                && instance.version == "v1.0.0"
+        }) {
+            delivered = true;
+            break;
+        }
+    }
     assert!(
-        delivered.is_some(),
+        delivered,
         "the watcher must deliver the registered instance, endpoint and version intact"
     );
 

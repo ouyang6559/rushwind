@@ -293,8 +293,16 @@ jobs:
       - name: Start rabbitmq
         run: |
           docker run -d --name broker-rabbitmq -p 5672:5672 -p 61613:61613 rabbitmq:latest
+          # The plugin CLI silently falls back to offline mode against a
+          # half-booted node, and the broker takes minutes to finish
+          # booting on a slow runner — wait for the node first, enable
+          # the plugin only then, and wait again until both listeners
+          # actually accept connections.
+          for i in $(seq 1 90); do docker exec broker-rabbitmq rabbitmq-diagnostics -q ping >/dev/null 2>&1 && break; sleep 2; done
           docker exec broker-rabbitmq rabbitmq-plugins enable rabbitmq_stomp
-          sleep 10
+          for port in 5672 61613; do
+            for i in $(seq 1 90); do timeout 2 bash -c "cat < /dev/null > /dev/tcp/127.0.0.1/$port" 2>/dev/null && break; sleep 2; done
+          done
 
       # Apache Kafka in KRaft single-node mode: the engine's live
       # suite creates its probe topics explicitly, so auto-create
@@ -389,17 +397,24 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # Host port 9140, not 9100: the runner VMs ship services bound to
+      # several conventional monitoring/exporter ports (9100 among them,
+      # like 9200 — which is why opensearch maps to 9201), and publishing
+      # onto an occupied port makes docker run fail with exit 125.
       - name: Start minio
         run: |
-          docker run -d --name minio -p 9100:9000 -e MINIO_ROOT_USER=rushwind -e MINIO_ROOT_PASSWORD=rushwind-secret minio/minio:latest server /data
-          for i in $(seq 1 60); do curl -fsS http://localhost:9100/minio/health/live >/dev/null 2>&1 && break; sleep 2; done
+          if ! err=$(docker run -d --name minio -p 9140:9000 -e MINIO_ROOT_USER=rushwind -e MINIO_ROOT_PASSWORD=rushwind-secret minio/minio:latest server /data 2>&1); then
+            echo "::error::minio container failed to start: ${err}"
+            exit 1
+          fi
+          for i in $(seq 1 60); do curl -fsS http://localhost:9140/minio/health/live >/dev/null 2>&1 && break; sleep 2; done
 
       - name: S3 suite
         run: |
           cargo test -p rushwind-oss-s3 --features live -- --nocapture 2>&1 | tee /tmp/s3-suite.log
           exit ${PIPESTATUS[0]}
         env:
-          OSS_S3_ENDPOINT: 127.0.0.1:9100
+          OSS_S3_ENDPOINT: 127.0.0.1:9140
           OSS_S3_ACCESS_KEY: rushwind
           OSS_S3_SECRET_KEY: rushwind-secret
           OSS_S3_BUCKET: rushwind-test
@@ -420,10 +435,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # host-gateway lets the container reach the test process's
+      # participant servers (advertised as host.docker.internal via
+      # DTM_CALLBACK_HOST): dtmsvr dials those URLs itself, and inside
+      # the container 127.0.0.1 would hit the container's own loopback.
       - name: Start dtm
         run: |
-          docker run -d --name dtm -p 36789:36789 yedf/dtm:latest
-          for i in $(seq 1 60); do curl -fsS "http://localhost:36789/api/dtmsvr/query" >/dev/null 2>&1 && break; sleep 2; done
+          docker run -d --name dtm --add-host=host.docker.internal:host-gateway -p 36789:36789 yedf/dtm:latest
+          for i in $(seq 1 60); do curl -fsS "http://localhost:36789/api/dtmsvr/newGid" >/dev/null 2>&1 && break; sleep 2; done
 
       - name: DTM suite
         run: |
@@ -431,6 +450,7 @@ jobs:
           exit ${PIPESTATUS[0]}
         env:
           DTM_SERVER: http://127.0.0.1:36789/api/dtmsvr
+          DTM_CALLBACK_HOST: host.docker.internal
 
       - name: Report suite failure detail
         if: failure()

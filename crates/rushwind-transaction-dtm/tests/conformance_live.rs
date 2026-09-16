@@ -2,6 +2,12 @@
 //! (`DTM_SERVER`, default the DTM localhost default) and
 //! requires DTM itself to drive the participant endpoints. Off by
 //! default; CI runs it against a dtm service container.
+//!
+//! The participant servers bind wildcard and are advertised to dtm
+//! under `DTM_CALLBACK_HOST` (default `127.0.0.1`): dtmsvr dials the
+//! participant URLs itself, so when it runs in a container — as CI's
+//! does — the host part must be one that resolves to the test
+//! process's machine from inside that container.
 #![cfg(feature = "live")]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,6 +19,20 @@ use rushwind_transaction_dtm::DtmClient;
 
 fn server() -> String {
     std::env::var("DTM_SERVER").unwrap_or_else(|_| "http://localhost:36789/api/dtmsvr".into())
+}
+
+/// The host dtmsvr reaches the participant servers on — the test
+/// process's machine as seen from wherever dtmsvr runs.
+fn callback_host() -> String {
+    std::env::var("DTM_CALLBACK_HOST").unwrap_or_else(|_| "127.0.0.1".into())
+}
+
+/// A wildcard-bound listener plus the base URL dtmsvr dials back on:
+/// the configured callback host with the listener's ephemeral port.
+async fn participant_base() -> (tokio::net::TcpListener, String) {
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    (listener, format!("http://{}:{port}", callback_host()))
 }
 
 fn unique_gid(prefix: &str) -> String {
@@ -53,12 +73,11 @@ async fn spawn_tcc_busi() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
             }),
         )
         .route("/cancel", axum::routing::post(|| async move { ok_body() }));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
+    let (listener, base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (format!("http://{address}"), try_calls, confirm_calls)
+    (base, try_calls, confirm_calls)
 }
 
 /// Serves the msg participant endpoints, counting calls per path.
@@ -72,12 +91,11 @@ async fn spawn_msg_busi() -> (String, Arc<AtomicUsize>) {
             ok_body()
         }),
     );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
+    let (listener, base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (format!("http://{address}"), action_calls)
+    (base, action_calls)
 }
 
 /// Serves the query-prepared endpoint for msg.
@@ -86,12 +104,11 @@ async fn spawn_query_prepared() -> String {
         "/query-prepared",
         axum::routing::get(|| async move { ok_body() }),
     );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
+    let (listener, base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    format!("http://{address}/query-prepared")
+    format!("{base}/query-prepared")
 }
 
 #[tokio::test]
@@ -162,12 +179,11 @@ async fn spawn_busi() -> (String, Arc<AtomicUsize>, Arc<AtomicUsize>) {
                 ok_body()
             }),
         );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
+    let (listener, base) = participant_base().await;
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (format!("http://{address}"), action_calls, compensate_calls)
+    (base, action_calls, compensate_calls)
 }
 
 async fn wait_for(counter: &Arc<AtomicUsize>, what: &str) {

@@ -7,6 +7,21 @@ targets = []
 [advisories]
 version = 2
 yanked = "warn"
+# Unmaintained-crate advisories that only upstream can fix. Each rides in
+# through the latest available release of its parent crate, so no dependency
+# bump removes it; re-evaluate when upstream ships a new release.
+ignore = [
+    # starlark 0.14.2 (latest) -> pagable -> postcard -> heapless
+    { id = "RUSTSEC-2023-0089", reason = "atomic-polyfill via starlark's postcard/heapless chain; starlark 0.14.2 is the newest release and still carries it" },
+    # starlark 0.14.2 (latest) -> derivative
+    { id = "RUSTSEC-2024-0388", reason = "derivative via starlark 0.14.2, the newest release; no fixed version exists" },
+    # starlark 0.14.2 (latest) -> starlark_map -> fxhash
+    { id = "RUSTSEC-2025-0057", reason = "fxhash via starlark_map 0.14.2, the newest release; no fixed version exists" },
+    # cel-interpreter 0.10.0 (latest) and starlark 0.14.2 (latest) -> paste
+    { id = "RUSTSEC-2024-0436", reason = "paste via cel-interpreter 0.10.0 / starlark 0.14.2, both the newest releases; no fixed version exists" },
+    # samsa 0.1.8 (latest, itself dormant) -> rustls-pemfile
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile via samsa 0.1.8, the newest release; samsa itself is dormant, no fixed version exists" },
+]
 
 [licenses]
 version = 2
@@ -21,4 +36,8 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "CDLA-Permissive-2.0",
+    # Boost Software License — permissive, OSI-approved, FSF-free. Pulled in
+    # transitively (rustyline's clipboard-win/error-code via starlark,
+    # xxhash-rust via redis); not removable at this level.
+    "BSL-1.0",
 ]
